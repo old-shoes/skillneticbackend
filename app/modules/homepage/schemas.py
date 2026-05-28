@@ -1,0 +1,61 @@
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel
+
+
+class CategoryItemOut(BaseModel):
+    id: str
+    name: str
+    slug: str
+    icon: str
+    color: str
+    description: str
+    skillCount: int
+
+
+class SkillTagOut(BaseModel):
+    id: str
+    name: str
+    type: Literal["model", "scene", "difficulty", "type"]
+
+
+class HomepageSkillOut(BaseModel):
+    id: str
+    title: str
+    slug: str
+    summary: str
+    coverIcon: Optional[str] = None
+    categoryName: str
+    tags: List[SkillTagOut]
+    difficulty: Literal["beginner", "intermediate", "advanced"]
+    modelLabels: List[str]
+    favoriteCount: int
+    viewCount: int
+    isFeatured: bool
+    isHot: bool
+    isFavorited: bool = False
+
+
+class TutorialItemOut(BaseModel):
+    id: str
+    title: str
+    slug: str
+    summary: str
+    coverImage: Optional[str] = None
+    chapterCount: int
+    durationMinutes: int
+
+
+class HomepageStatsOut(BaseModel):
+    skillFavorites: int
+    qualityTemplates: int
+    monthlyVisits: int
+    beginnerTutorials: int
+
+
+class HomepageOut(BaseModel):
+    categories: List[CategoryItemOut]
+    featuredSkills: List[HomepageSkillOut]
+    latestSkills: List[HomepageSkillOut]
+    tutorials: List[TutorialItemOut]
+    stats: HomepageStatsOut
