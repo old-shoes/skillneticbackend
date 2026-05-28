@@ -10,6 +10,7 @@ from app.modules.admin_logs.router import router as admin_logs_router
 from app.modules.admin_notifications.router import router as admin_notifications_router
 from app.modules.admin_points.router import router as admin_points_router
 from app.modules.admin_skills.router import router as admin_skills_router
+from app.modules.admin_skill_taxonomy.router import router as admin_skill_taxonomy_router
 from app.modules.auth.router import router as auth_router
 from app.modules.admin_tutorials.router import router as admin_tutorials_router
 from app.modules.admin_users.router import router as admin_users_router
@@ -52,6 +53,7 @@ app.include_router(admin_help_posts_router, prefix="/api/admin/v1/help-posts")
 app.include_router(admin_notifications_router, prefix="/api/admin/v1")
 app.include_router(admin_logs_router, prefix="/api/admin/v1")
 app.include_router(admin_tutorials_router, prefix="/api/admin/v1")
+app.include_router(admin_skill_taxonomy_router, prefix="/api/admin/v1")
 app.include_router(admin_skill_submissions_router, prefix="/api/admin/v1")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
