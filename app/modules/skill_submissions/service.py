@@ -238,12 +238,7 @@ class SkillSubmissionService:
         return normalized
 
     def _model_options(self) -> List[dict]:
-        rows = self.db.scalars(
-            select(Tag)
-            .where(Tag.type == "model", Tag.deleted_at.is_(None), Tag.is_enabled.is_(True))
-            .order_by(Tag.sort_order.asc(), Tag.created_at.asc())
-        ).all()
-        return [{"label": row.name, "value": row.slug} for row in rows]
+        return []
 
     def _normalize_skill_type(self, value: Optional[str]) -> Optional[str]:
         normalized = (value or "").strip()
@@ -286,7 +281,7 @@ class SkillSubmissionService:
                 "自定义角色",
             ],
             useCaseOptions=USE_CASE_OPTIONS,
-            modelOptions=self._model_options(),
+            modelOptions=[],
             skillTypeOptions=SKILL_TYPE_OPTIONS,
             outputFormats=[
                 {"label": "标题", "value": "title"},

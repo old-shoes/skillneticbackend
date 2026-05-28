@@ -80,14 +80,6 @@ def main() -> None:
         category_map = {item.slug: item for item in db.scalars(select(Category)).all()}
 
         tags = [
-            Tag(name="ChatGPT", slug="chatgpt", type="model", skill_count=6, sort_order=1),
-            Tag(name="Claude", slug="claude", type="model", skill_count=3, sort_order=2),
-            Tag(name="Gemini", slug="gemini", type="model", skill_count=2, sort_order=3),
-            Tag(name="DeepSeek", slug="deepseek", type="model", skill_count=3, sort_order=4),
-            Tag(name="Midjourney", slug="midjourney", type="model", skill_count=1, sort_order=5),
-            Tag(name="通义千问", slug="qwen", type="model", skill_count=2, sort_order=6),
-            Tag(name="Kimi", slug="kimi", type="model", skill_count=2, sort_order=7),
-            Tag(name="GPT-4o", slug="gpt-4o", type="model", skill_count=6, sort_order=8),
             Tag(name="小红书", slug="xiaohongshu", type="scene", skill_count=1, sort_order=20),
             Tag(name="短视频", slug="short-video", type="scene", skill_count=1, sort_order=21),
             Tag(name="简历", slug="resume", type="scene", skill_count=2, sort_order=22),

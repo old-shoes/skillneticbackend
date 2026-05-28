@@ -37,8 +37,6 @@ def main() -> None:
         category_map = {item.slug: item for item in db.scalars(select(Category)).all()}
 
         tags = [
-            Tag(name="GPT-4o", slug="gpt-4o", type="model", sort_order=1),
-            Tag(name="Midjourney", slug="midjourney", type="model", sort_order=2),
             Tag(name="小红书", slug="xiaohongshu", type="scene", sort_order=10),
             Tag(name="办公", slug="office", type="scene", sort_order=11),
             Tag(name="求职", slug="job", type="scene", sort_order=12),

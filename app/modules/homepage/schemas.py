@@ -28,7 +28,6 @@ class HomepageSkillOut(BaseModel):
     categoryName: str
     tags: List[SkillTagOut]
     difficulty: Literal["beginner", "intermediate", "advanced"]
-    modelLabels: List[str]
     favoriteCount: int
     viewCount: int
     isFeatured: bool

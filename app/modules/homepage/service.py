@@ -79,7 +79,6 @@ def _map_skills(
                 "categoryName": category.name if category else "",
                 "tags": [],
                 "difficulty": skill.difficulty,
-                "modelLabels": [],
                 "favoriteCount": skill.favorite_count,
                 "viewCount": skill.view_count,
                 "isFeatured": skill.is_featured,
@@ -92,8 +91,6 @@ def _map_skills(
             tag_out = SkillTagOut(id=str(tag.id), name=tag.name, type=tag.type)
             if all(existing.id != tag_out.id for existing in item["tags"]):
                 item["tags"].append(tag_out)
-            if tag.type == "model" and tag.name not in item["modelLabels"]:
-                item["modelLabels"].append(tag.name)
 
     favorited_ids = _map_user_favorites(db, user_id, skill_ids)
     for skill_id in skill_ids:

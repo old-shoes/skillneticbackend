@@ -8,14 +8,13 @@ from pydantic import BaseModel, Field
 SkillDifficulty = Literal["beginner", "intermediate", "advanced"]
 SkillType = Literal["prompt", "workflow", "tutorial", "tool_config", "agent"]
 SkillSort = Literal["latest", "popular", "favorites", "views"]
-TagType = Literal["model", "scene", "difficulty", "type"]
+TagType = Literal["scene", "difficulty", "type"]
 
 
 class SkillQueryIn(BaseModel):
     q: Optional[str] = Field(default=None, max_length=80)
     category: Optional[str] = Field(default=None, max_length=80)
     scene: Optional[str] = Field(default=None, max_length=80)
-    model: Optional[str] = Field(default=None, max_length=80)
     type: Optional[SkillType] = None
     sort: SkillSort = "latest"
     page: int = Field(default=1, ge=1)
@@ -115,7 +114,6 @@ class SkillFiltersOut(BaseModel):
     categories: List[FilterOptionOut]
     categoryTree: List[CategoryTreeOut]
     scenes: List[FilterOptionOut]
-    models: List[FilterOptionOut]
     types: List[FilterOptionOut]
 
 

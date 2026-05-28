@@ -208,15 +208,6 @@ class SkillService:
                 )
             )
 
-        if query.model:
-            stmt = stmt.where(
-                Skill.id.in_(
-                    select(SkillTag.skill_id)
-                    .join(Tag, SkillTag.tag_id == Tag.id)
-                    .where(Tag.type == "model", Tag.slug == query.model)
-                )
-            )
-
         return stmt
 
     def _apply_sort(self, stmt: Select, sort: str) -> Select:
@@ -453,6 +444,5 @@ class SkillService:
             ],
             categoryTree=self._category_tree(),
             scenes=self._get_tag_filters("scene"),
-            models=self._get_tag_filters("model"),
             types=TYPE_OPTIONS,
         )
