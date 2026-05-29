@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.modules.admin_auth.router import router as admin_auth_router
+from app.modules.admin_current_user.router import router as admin_current_user_router
+from app.modules.admin_auth.service import AdminAuthService
 from app.modules.admin_dashboard.router import router as admin_dashboard_router
 from app.modules.admin_help_posts.router import router as admin_help_posts_router
 from app.modules.admin_logs.router import router as admin_logs_router
@@ -45,6 +47,7 @@ app.include_router(tutorials_router, prefix="/api/v1")
 app.include_router(track_router, prefix="/api/v1")
 app.include_router(upload_router, prefix="/api/v1")
 app.include_router(admin_auth_router, prefix="/api/admin/v1/auth")
+app.include_router(admin_current_user_router, prefix="/api/admin/v1")
 app.include_router(admin_dashboard_router, prefix="/api/admin/v1/dashboard")
 app.include_router(admin_skills_router, prefix="/api/admin/v1/skills")
 app.include_router(admin_users_router, prefix="/api/admin/v1/users")
@@ -56,6 +59,17 @@ app.include_router(admin_tutorials_router, prefix="/api/admin/v1")
 app.include_router(admin_skill_taxonomy_router, prefix="/api/admin/v1")
 app.include_router(admin_skill_submissions_router, prefix="/api/admin/v1")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+
+@app.on_event("startup")
+def ensure_default_admin() -> None:
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        AdminAuthService(db).ensure_default_super_admin()
+    finally:
+        db.close()
 
 
 @app.get("/health")

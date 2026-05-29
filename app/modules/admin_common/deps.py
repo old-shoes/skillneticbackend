@@ -6,6 +6,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.modules.admin_auth.service import AdminAuthService
 from app.modules.auth.deps import get_session_token
 from app.modules.auth.service import AuthService
 
@@ -63,6 +64,19 @@ async def get_current_admin(
     x_admin_name: str = Header(default="", alias="X-Admin-Name"),
     db: Session = Depends(get_db),
 ) -> dict:
+    token = get_session_token(request)
+    if token:
+        admin = AdminAuthService(db)._get_admin_by_token(token)
+        if admin is not None:
+            permissions = ROLE_PERMISSIONS.get(admin.role, ROLE_PERMISSIONS["viewer"])
+            return {
+                "id": str(admin.id),
+                "username": admin.username,
+                "nickname": admin.nickname,
+                "role": admin.role,
+                "permissions": permissions,
+            }
+
     role = _normalize_role(x_admin_role)
     if role:
         permissions = ROLE_PERMISSIONS.get(role)
@@ -77,7 +91,6 @@ async def get_current_admin(
             "permissions": permissions,
         }
 
-    token = get_session_token(request)
     if token:
         user = AuthService(db).get_current_user_optional(token)
         if user is not None:
@@ -91,3 +104,15 @@ async def get_current_admin(
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="后台未登录")
 
+
+def get_admin_session_token(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> str:
+    token = get_session_token(request)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="后台未登录")
+    admin = AdminAuthService(db)._get_admin_by_token(token)
+    if admin is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="后台未登录")
+    return token
