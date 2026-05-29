@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.modules.category.models import Category
@@ -58,6 +58,24 @@ def _map_user_favorites(db: Session, user_id: Optional[UUID], skill_ids: List[UU
     return set(rows)
 
 
+def _map_favorite_counts(db: Session, skill_ids: List[UUID]) -> Dict[UUID, int]:
+    if not skill_ids:
+        return {}
+
+    rows = db.execute(
+        select(
+            UserFavorite.target_id,
+            func.count(UserFavorite.id),
+        )
+        .where(
+            UserFavorite.target_type == "skill",
+            UserFavorite.target_id.in_(skill_ids),
+        )
+        .group_by(UserFavorite.target_id)
+    ).all()
+    return {target_id: int(count) for target_id, count in rows}
+
+
 def _map_skills(
     db: Session,
     rows: List[Tuple[Skill, Optional[Category], Optional[Tag]]],
@@ -92,8 +110,10 @@ def _map_skills(
             if all(existing.id != tag_out.id for existing in item["tags"]):
                 item["tags"].append(tag_out)
 
+    favorite_counts = _map_favorite_counts(db, skill_ids)
     favorited_ids = _map_user_favorites(db, user_id, skill_ids)
     for skill_id in skill_ids:
+        skill_map[skill_id]["favoriteCount"] = favorite_counts.get(skill_id, 0)
         skill_map[skill_id]["isFavorited"] = skill_id in favorited_ids
 
     return [HomepageSkillOut.model_validate(item) for item in skill_map.values()]

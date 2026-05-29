@@ -36,6 +36,23 @@ class SkillService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def _favorite_counts_map(self, skill_ids: Sequence[UUID]) -> Dict[UUID, int]:
+        if not skill_ids:
+            return {}
+
+        rows = self.db.execute(
+            select(
+                UserFavorite.target_id,
+                func.count(UserFavorite.id),
+            )
+            .where(
+                UserFavorite.target_type == "skill",
+                UserFavorite.target_id.in_(list(skill_ids)),
+            )
+            .group_by(UserFavorite.target_id)
+        ).all()
+        return {target_id: int(count) for target_id, count in rows}
+
     def _base_skill_query(self) -> Select:
         return (
             select(Skill.id)
@@ -282,9 +299,11 @@ class SkillService:
             self.db.add(skill)
             self.db.commit()
             self.db.refresh(skill)
-            return SkillFavoriteOut(favorited=True, favoriteCount=skill.favorite_count)
+            favorite_count = self._favorite_counts_map([skill.id]).get(skill.id, 0)
+            return SkillFavoriteOut(favorited=True, favoriteCount=favorite_count)
 
-        return SkillFavoriteOut(favorited=True, favoriteCount=int(skill.favorite_count or 0))
+        favorite_count = self._favorite_counts_map([skill.id]).get(skill.id, 0)
+        return SkillFavoriteOut(favorited=True, favoriteCount=favorite_count)
 
     def unfavorite_skill(self, *, user_id: UUID, skill_id: UUID) -> SkillFavoriteOut:
         user = self.db.get(User, user_id)
@@ -308,9 +327,11 @@ class SkillService:
             self.db.add(skill)
             self.db.commit()
             self.db.refresh(skill)
-            return SkillFavoriteOut(favorited=False, favoriteCount=skill.favorite_count)
+            favorite_count = self._favorite_counts_map([skill.id]).get(skill.id, 0)
+            return SkillFavoriteOut(favorited=False, favoriteCount=favorite_count)
 
-        return SkillFavoriteOut(favorited=False, favoriteCount=int(skill.favorite_count or 0))
+        favorite_count = self._favorite_counts_map([skill.id]).get(skill.id, 0)
+        return SkillFavoriteOut(favorited=False, favoriteCount=favorite_count)
 
     def get_skill_list(self, query: SkillQueryIn, user_id: Optional[UUID] = None) -> SkillListOut:
         filtered_ids_stmt = self._apply_filters(self._base_skill_query(), query)
@@ -343,6 +364,7 @@ class SkillService:
         category_map = self._skill_categories_map(paged_ids)
         primary_category_map = self._primary_category_map(paged_ids)
         favorited_ids = self._map_user_favorites(user_id, paged_ids)
+        favorite_counts = self._favorite_counts_map(paged_ids)
 
         items: List[SkillListItemOut] = []
         for skill_id in paged_ids:
@@ -368,7 +390,7 @@ class SkillService:
                     difficulty=skill.difficulty,
                     type=skill.type,
                     recommendedModels=skill.recommended_models or [],
-                    favoriteCount=skill.favorite_count,
+                    favoriteCount=favorite_counts.get(skill.id, 0),
                     viewCount=skill.view_count,
                     publishedAt=skill.published_at or skill.created_at,
                     isFeatured=skill.is_featured,
@@ -398,6 +420,7 @@ class SkillService:
         category_map = self._skill_categories_map([skill.id])
         primary_category_map = self._primary_category_map([skill.id])
         favorited_ids = self._map_user_favorites(user_id, [skill.id])
+        favorite_counts = self._favorite_counts_map([skill.id])
         fallback_category = self._category_out(category)
         primary_category = primary_category_map.get(skill.id, fallback_category)
         categories = category_map.get(skill.id, [primary_category])
@@ -417,7 +440,7 @@ class SkillService:
             type=skill.type,
             useCase=skill.use_case,
             recommendedModels=skill.recommended_models or [],
-            favoriteCount=skill.favorite_count,
+            favoriteCount=favorite_counts.get(skill.id, 0),
             viewCount=skill.view_count,
             publishedAt=skill.published_at or skill.created_at,
             updatedAt=skill.updated_at,
