@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Sequence, Tuple
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.tutorial.models import (
@@ -77,6 +77,27 @@ class TutorialService:
             )
 
         return stmt
+
+    def _apply_search_filter(self, stmt: Select, query: TutorialQueryIn, locale: str) -> Select:
+        keyword = (query.q or "").strip()
+        if not keyword or locale != DEFAULT_TUTORIAL_LOCALE:
+            return stmt
+
+        pattern = f"%{keyword}%"
+        return stmt.where(
+            or_(
+                Tutorial.title.ilike(pattern),
+                Tutorial.summary.ilike(pattern),
+                Tutorial.search_keywords.ilike(pattern),
+            )
+        )
+
+    def _apply_sort(self, stmt: Select, sort: str) -> Select:
+        if sort == "popular":
+            return stmt.order_by(Tutorial.view_count.desc(), Tutorial.favorite_count.desc(), Tutorial.published_at.desc())
+        if sort == "favorites":
+            return stmt.order_by(Tutorial.favorite_count.desc(), Tutorial.published_at.desc())
+        return stmt.order_by(Tutorial.published_at.desc(), Tutorial.created_at.desc())
 
     def _get_localized_tutorial_title(self, tutorial: Tutorial, locale: str) -> str:
         if locale == DEFAULT_TUTORIAL_LOCALE:
@@ -251,18 +272,42 @@ class TutorialService:
         ]
 
     def _get_prev_next(self, tutorial: Tutorial, locale: str) -> TutorialPrevNextOut:
-        ordered = self.db.scalars(
+        published_at = tutorial.published_at or tutorial.created_at
+
+        prev_item = self.db.scalar(
             select(Tutorial)
-            .where(Tutorial.status == "published", Tutorial.deleted_at.is_(None))
+            .where(
+                Tutorial.status == "published",
+                Tutorial.deleted_at.is_(None),
+                Tutorial.id != tutorial.id,
+                or_(
+                    Tutorial.published_at < published_at,
+                    and_(
+                        Tutorial.published_at == published_at,
+                        Tutorial.created_at < tutorial.created_at,
+                    ),
+                ),
+            )
             .order_by(Tutorial.published_at.desc(), Tutorial.created_at.desc())
-        ).all()
-
-        index = next((idx for idx, item in enumerate(ordered) if item.id == tutorial.id), -1)
-        if index < 0:
-            return TutorialPrevNextOut()
-
-        prev_item = ordered[index + 1] if index + 1 < len(ordered) else None
-        next_item = ordered[index - 1] if index > 0 else None
+            .limit(1)
+        )
+        next_item = self.db.scalar(
+            select(Tutorial)
+            .where(
+                Tutorial.status == "published",
+                Tutorial.deleted_at.is_(None),
+                Tutorial.id != tutorial.id,
+                or_(
+                    Tutorial.published_at > published_at,
+                    and_(
+                        Tutorial.published_at == published_at,
+                        Tutorial.created_at > tutorial.created_at,
+                    ),
+                ),
+            )
+            .order_by(Tutorial.published_at.asc(), Tutorial.created_at.asc())
+            .limit(1)
+        )
 
         return TutorialPrevNextOut(
             prev=TutorialPrevNextItemOut(
@@ -281,29 +326,113 @@ class TutorialService:
 
     def get_tutorial_list(self, query: TutorialQueryIn) -> TutorialListOut:
         locale = normalize_tutorial_locale(query.locale)
-        filtered_ids_stmt = self._apply_filters(self._base_query(), query)
-        tutorial_ids = self.db.scalars(filtered_ids_stmt).all()
+        if locale != DEFAULT_TUTORIAL_LOCALE and query.q:
+            filtered_ids_stmt = self._apply_filters(self._base_query(), query)
+            tutorial_ids = self.db.scalars(filtered_ids_stmt).all()
+            rows = self.db.execute(
+                select(Tutorial, TutorialCategory)
+                .join(TutorialCategory, Tutorial.category_id == TutorialCategory.id)
+                .where(Tutorial.id.in_(tutorial_ids))
+            ).all()
+
+            row_map: Dict[UUID, Tuple[Tutorial, TutorialCategory]] = {
+                tutorial.id: (tutorial, category) for tutorial, category in rows
+            }
+            tags_map = self._map_tags_by_tutorial(tutorial_ids, locale)
+
+            items: List[TutorialListItemOut] = []
+            for tutorial_id in tutorial_ids:
+                pair = row_map.get(tutorial_id)
+                if pair is None:
+                    continue
+
+                tutorial, category = pair
+                if query.q and not self._matches_search(tutorial, locale, query.q):
+                    continue
+
+                items.append(
+                    TutorialListItemOut(
+                        id=str(tutorial.id),
+                        title=self._get_localized_tutorial_title(tutorial, locale),
+                        slug=tutorial.slug,
+                        summary=self._get_localized_tutorial_summary(tutorial, locale),
+                        coverImage=tutorial.cover_image,
+                        coverIcon=tutorial.cover_icon,
+                        category=TutorialCategoryOut(
+                            id=str(category.id),
+                            name=self._get_localized_category_name(category, locale),
+                            slug=category.slug,
+                            icon=category.icon,
+                            color=category.color,
+                            tutorialCount=category.tutorial_count,
+                        ),
+                        tags=tags_map.get(tutorial.id, []),
+                        difficulty=tutorial.difficulty,
+                        readTimeMinutes=tutorial.read_time_minutes,
+                        viewCount=tutorial.view_count,
+                        favoriteCount=tutorial.favorite_count,
+                        publishedAt=tutorial.published_at or tutorial.created_at,
+                        updatedAt=tutorial.updated_at,
+                        isFeatured=tutorial.is_featured,
+                        isBeginner=tutorial.is_beginner,
+                    )
+                )
+
+            if query.sort == "popular":
+                items.sort(key=lambda item: (item.viewCount, item.favoriteCount, item.publishedAt), reverse=True)
+            elif query.sort == "favorites":
+                items.sort(key=lambda item: (item.favoriteCount, item.publishedAt), reverse=True)
+            else:
+                items.sort(key=lambda item: item.publishedAt, reverse=True)
+
+            total = len(items)
+            page = query.page
+            page_size = query.pageSize
+            start = (page - 1) * page_size
+            end = start + page_size
+            paged_items = items[start:end]
+
+            return TutorialListOut(list=paged_items, pagination=PaginationOut.from_total(page, page_size, total))
+
+        filtered_stmt = self._apply_search_filter(self._apply_filters(self._base_query(), query), query, locale)
+        total = self.db.scalar(
+            select(func.count()).select_from(filtered_stmt.subquery())
+        ) or 0
+
+        page = query.page
+        page_size = query.pageSize
+        paged_ids = self.db.scalars(
+            self._apply_sort(
+                select(Tutorial.id)
+                .join(TutorialCategory, Tutorial.category_id == TutorialCategory.id)
+                .where(Tutorial.id.in_(filtered_stmt)),
+                query.sort,
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+
+        if not paged_ids:
+            return TutorialListOut(list=[], pagination=PaginationOut.from_total(page, page_size, total))
+
         rows = self.db.execute(
             select(Tutorial, TutorialCategory)
             .join(TutorialCategory, Tutorial.category_id == TutorialCategory.id)
-            .where(Tutorial.id.in_(tutorial_ids))
+            .where(Tutorial.id.in_(paged_ids))
         ).all()
 
         row_map: Dict[UUID, Tuple[Tutorial, TutorialCategory]] = {
             tutorial.id: (tutorial, category) for tutorial, category in rows
         }
-        tags_map = self._map_tags_by_tutorial(tutorial_ids, locale)
+        tags_map = self._map_tags_by_tutorial(paged_ids, locale)
 
         items: List[TutorialListItemOut] = []
-        for tutorial_id in tutorial_ids:
+        for tutorial_id in paged_ids:
             pair = row_map.get(tutorial_id)
             if pair is None:
                 continue
 
             tutorial, category = pair
-            if query.q and not self._matches_search(tutorial, locale, query.q):
-                continue
-
             items.append(
                 TutorialListItemOut(
                     id=str(tutorial.id),
@@ -332,21 +461,7 @@ class TutorialService:
                 )
             )
 
-        if query.sort == "popular":
-            items.sort(key=lambda item: (item.viewCount, item.favoriteCount, item.publishedAt), reverse=True)
-        elif query.sort == "favorites":
-            items.sort(key=lambda item: (item.favoriteCount, item.publishedAt), reverse=True)
-        else:
-            items.sort(key=lambda item: item.publishedAt, reverse=True)
-
-        total = len(items)
-        page = query.page
-        page_size = query.pageSize
-        start = (page - 1) * page_size
-        end = start + page_size
-        paged_items = items[start:end]
-
-        return TutorialListOut(list=paged_items, pagination=PaginationOut.from_total(page, page_size, total))
+        return TutorialListOut(list=items, pagination=PaginationOut.from_total(page, page_size, total))
 
     def get_filters(self, locale: str) -> TutorialFiltersOut:
         normalized_locale = normalize_tutorial_locale(locale)

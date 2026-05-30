@@ -1,8 +1,8 @@
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.modules.category.models import Category
@@ -18,17 +18,6 @@ from app.modules.homepage.schemas import (
 from app.modules.skill.models import Skill, SkillTag, Tag
 from app.modules.me.models import UserFavorite
 from app.modules.tutorial.models import Tutorial
-
-
-def _build_skill_query() -> Select:
-    return (
-        select(Skill, Category, Tag)
-        .join(Category, Skill.category_id == Category.id, isouter=True)
-        .join(SkillTag, SkillTag.skill_id == Skill.id, isouter=True)
-        .join(Tag, SkillTag.tag_id == Tag.id, isouter=True)
-        .where(Skill.status == "published", Skill.deleted_at.is_(None))
-    )
-
 
 def _map_categories(rows: List[Category]) -> List[CategoryItemOut]:
     return [
@@ -76,47 +65,59 @@ def _map_favorite_counts(db: Session, skill_ids: List[UUID]) -> Dict[UUID, int]:
     return {target_id: int(count) for target_id, count in rows}
 
 
+def _map_tags_by_skill(db: Session, skill_ids: List[UUID]) -> Dict[UUID, List[SkillTagOut]]:
+    if not skill_ids:
+        return {}
+
+    rows = db.execute(
+        select(SkillTag.skill_id, Tag)
+        .join(Tag, SkillTag.tag_id == Tag.id)
+        .where(
+            SkillTag.skill_id.in_(skill_ids),
+            Tag.deleted_at.is_(None),
+            Tag.is_enabled.is_(True),
+        )
+        .order_by(Tag.sort_order.asc(), Tag.created_at.asc())
+    ).all()
+
+    result: Dict[UUID, List[SkillTagOut]] = {}
+    for skill_id, tag in rows:
+        result.setdefault(skill_id, []).append(
+            SkillTagOut(id=str(tag.id), name=tag.name, type=tag.type)
+        )
+    return result
+
+
 def _map_skills(
     db: Session,
-    rows: List[Tuple[Skill, Optional[Category], Optional[Tag]]],
+    rows: List[tuple[Skill, Optional[Category]]],
     user_id: Optional[UUID] = None,
 ) -> List[HomepageSkillOut]:
-    skill_map: Dict[str, dict] = {}
-    skill_ids: List[UUID] = []
-
-    for skill, category, tag in rows:
-        item = skill_map.get(skill.id)
-        if item is None:
-            skill_ids.append(skill.id)
-            item = {
-                "id": str(skill.id),
-                "title": skill.title,
-                "slug": skill.slug,
-                "summary": skill.summary,
-                "coverIcon": skill.cover_icon,
-                "categoryName": category.name if category else "",
-                "tags": [],
-                "difficulty": skill.difficulty,
-                "favoriteCount": skill.favorite_count,
-                "viewCount": skill.view_count,
-                "isFeatured": skill.is_featured,
-                "isHot": skill.is_hot,
-                "isFavorited": False,
-            }
-            skill_map[skill.id] = item
-
-        if tag is not None:
-            tag_out = SkillTagOut(id=str(tag.id), name=tag.name, type=tag.type)
-            if all(existing.id != tag_out.id for existing in item["tags"]):
-                item["tags"].append(tag_out)
-
+    skill_ids = [skill.id for skill, _ in rows]
     favorite_counts = _map_favorite_counts(db, skill_ids)
     favorited_ids = _map_user_favorites(db, user_id, skill_ids)
-    for skill_id in skill_ids:
-        skill_map[skill_id]["favoriteCount"] = favorite_counts.get(skill_id, 0)
-        skill_map[skill_id]["isFavorited"] = skill_id in favorited_ids
+    tags_map = _map_tags_by_skill(db, skill_ids)
 
-    return [HomepageSkillOut.model_validate(item) for item in skill_map.values()]
+    result: List[HomepageSkillOut] = []
+    for skill, category in rows:
+        result.append(
+            HomepageSkillOut(
+                id=str(skill.id),
+                title=skill.title,
+                slug=skill.slug,
+                summary=skill.summary,
+                coverIcon=skill.cover_icon,
+                categoryName=category.name if category else "",
+                tags=tags_map.get(skill.id, []),
+                difficulty=skill.difficulty,
+                favoriteCount=favorite_counts.get(skill.id, 0),
+                viewCount=skill.view_count,
+                isFeatured=skill.is_featured,
+                isHot=skill.is_hot,
+                isFavorited=skill.id in favorited_ids,
+            )
+        )
+    return result
 
 
 def _map_tutorials(rows: List[Tutorial]) -> List[TutorialItemOut]:
@@ -143,16 +144,23 @@ def get_homepage_data(db: Session, user_id: Optional[UUID] = None) -> HomepageOu
     ).all()
 
     featured_rows = db.execute(
-        _build_skill_query()
-        .where(Skill.is_featured.is_(True))
+        select(Skill, Category)
+        .join(Category, Skill.category_id == Category.id, isouter=True)
+        .where(
+            Skill.status == "published",
+            Skill.deleted_at.is_(None),
+            Skill.is_featured.is_(True),
+        )
         .order_by(Skill.published_at.desc(), Skill.created_at.desc())
-        .limit(30)
+        .limit(3)
     ).all()
 
     latest_rows = db.execute(
-        _build_skill_query()
+        select(Skill, Category)
+        .join(Category, Skill.category_id == Category.id, isouter=True)
+        .where(Skill.status == "published", Skill.deleted_at.is_(None))
         .order_by(Skill.published_at.desc(), Skill.created_at.desc())
-        .limit(80)
+        .limit(8)
     ).all()
 
     tutorial_rows = db.scalars(
@@ -173,8 +181,8 @@ def get_homepage_data(db: Session, user_id: Optional[UUID] = None) -> HomepageOu
         .limit(1)
     )
 
-    featured_skills = _map_skills(db, featured_rows, user_id)[:3]
-    latest_skills = _map_skills(db, latest_rows, user_id)[:8]
+    featured_skills = _map_skills(db, featured_rows, user_id)
+    latest_skills = _map_skills(db, latest_rows, user_id)
 
     stats = HomepageStatsOut(
         skillFavorites=stats_row.skill_favorites if stats_row else 10000,
