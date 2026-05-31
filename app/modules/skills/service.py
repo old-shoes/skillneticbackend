@@ -8,6 +8,7 @@ from app.modules.auth.models import User
 from app.modules.category.models import Category
 from app.modules.skill.models import Skill, SkillCategoryRelation, SkillTag, Tag
 from app.modules.me.models import UserFavorite
+from app.modules.skill_submissions.models import SkillSubmission
 from app.modules.skills.schemas import (
     CategoryOut,
     CategoryTreeOut,
@@ -241,6 +242,29 @@ class SkillService:
         ).all()
         return set(rows)
 
+    def _map_skill_authors(self, skill_ids: Sequence[UUID]) -> Dict[UUID, str]:
+        if not skill_ids:
+            return {}
+
+        rows = self.db.execute(
+            select(SkillSubmission.approved_skill_id, User.nickname)
+            .join(User, User.id == SkillSubmission.submitter_id)
+            .where(
+                SkillSubmission.approved_skill_id.in_(list(skill_ids)),
+                SkillSubmission.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+            )
+            .order_by(SkillSubmission.created_at.desc())
+        ).all()
+
+        result: Dict[UUID, str] = {}
+        for approved_skill_id, nickname in rows:
+            if approved_skill_id is None or not nickname or approved_skill_id in result:
+                continue
+            result[approved_skill_id] = nickname
+        return result
+
     def favorite_skill(self, *, user_id: UUID, skill_id: UUID) -> SkillFavoriteOut:
         user = self.db.get(User, user_id)
         if user is None or user.deleted_at is not None or not user.is_active:
@@ -329,6 +353,7 @@ class SkillService:
         tags_map = self._map_tags_by_skill(paged_ids)
         category_map, primary_category_map = self._skill_category_maps(paged_ids)
         favorited_ids = self._map_user_favorites(user_id, paged_ids)
+        author_map = self._map_skill_authors(paged_ids)
 
         items: List[SkillListItemOut] = []
         for skill_id in paged_ids:
@@ -346,6 +371,7 @@ class SkillService:
                     title=skill.title,
                     slug=skill.slug,
                     summary=skill.summary,
+                    authorName=author_map.get(skill.id),
                     coverIcon=skill.cover_icon,
                     category=primary_category,
                     primaryCategory=primary_category,
@@ -365,7 +391,13 @@ class SkillService:
 
         return SkillListOut(list=items, pagination=PaginationOut.from_total(page, page_size, total))
 
-    def get_skill_detail(self, slug: str, user_id: Optional[UUID] = None) -> Optional[SkillDetailOut]:
+    def get_skill_detail(
+        self,
+        slug: str,
+        user_id: Optional[UUID] = None,
+        *,
+        increment_view: bool = False,
+    ) -> Optional[SkillDetailOut]:
         row = self.db.execute(
             select(Skill, Category)
             .join(Category, Skill.category_id == Category.id, isouter=True)
@@ -380,9 +412,15 @@ class SkillService:
             return None
 
         skill, category = row
+        if increment_view:
+            skill.view_count = int(skill.view_count or 0) + 1
+            self.db.add(skill)
+            self.db.commit()
+            self.db.refresh(skill)
         tags_map = self._map_tags_by_skill([skill.id])
         category_map, primary_category_map = self._skill_category_maps([skill.id])
         favorited_ids = self._map_user_favorites(user_id, [skill.id])
+        author_map = self._map_skill_authors([skill.id])
         fallback_category = self._category_out(category)
         primary_category = primary_category_map.get(skill.id, fallback_category)
         categories = category_map.get(skill.id, [primary_category])
@@ -393,6 +431,7 @@ class SkillService:
             slug=skill.slug,
             summary=skill.summary,
             contentMarkdown=skill.content or "",
+            authorName=author_map.get(skill.id),
             coverIcon=skill.cover_icon,
             category=primary_category,
             primaryCategory=primary_category,

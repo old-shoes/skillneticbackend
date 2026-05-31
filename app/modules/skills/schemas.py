@@ -47,6 +47,7 @@ class SkillListItemOut(BaseModel):
     title: str
     slug: str
     summary: str
+    authorName: Optional[str] = None
     coverIcon: Optional[str] = None
     category: CategoryOut
     primaryCategory: CategoryOut
@@ -86,6 +87,7 @@ class SkillDetailOut(BaseModel):
     slug: str
     summary: str
     contentMarkdown: str
+    authorName: Optional[str] = None
     coverIcon: Optional[str] = None
     category: CategoryOut
     primaryCategory: CategoryOut
