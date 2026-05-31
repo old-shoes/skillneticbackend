@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Set
 
 from uuid import UUID
@@ -10,16 +12,62 @@ from app.modules.homepage.models import HomepageStats
 from app.modules.homepage.schemas import (
     CategoryItemOut,
     HomepageOut,
+    HomepageSceneCountOut,
     HomepageSkillOut,
     HomepageStatsOut,
     SkillTagOut,
     TutorialItemOut,
 )
-from app.modules.skill.models import Skill, SkillTag, Tag
+from app.modules.skill.models import Skill, SkillCategoryRelation, SkillTag, Tag
 from app.modules.me.models import UserFavorite
 from app.modules.tutorial.models import Tutorial
 
-def _map_categories(rows: List[Category]) -> List[CategoryItemOut]:
+def _map_category_skill_counts(db: Session, rows: List[Category]) -> Dict[UUID, int]:
+    if not rows:
+        return {}
+
+    root_ids = [row.id for row in rows]
+    child_rows = db.scalars(
+        select(Category).where(
+            Category.parent_id.in_(root_ids),
+            Category.deleted_at.is_(None),
+            Category.is_enabled.is_(True),
+        )
+    ).all()
+
+    member_ids_by_root: Dict[UUID, List[UUID]] = {}
+    for row in rows:
+        member_ids_by_root[row.id] = [row.id]
+    for child in child_rows:
+        if child.parent_id is not None and child.parent_id in member_ids_by_root:
+            member_ids_by_root[child.parent_id].append(child.id)
+
+    all_member_ids = sorted({member_id for member_ids in member_ids_by_root.values() for member_id in member_ids})
+    if not all_member_ids:
+        return {row.id: 0 for row in rows}
+
+    count_rows = db.execute(
+        select(
+            SkillCategoryRelation.category_id,
+            func.count(func.distinct(SkillCategoryRelation.skill_id)).label("skill_count"),
+        )
+        .join(Skill, Skill.id == SkillCategoryRelation.skill_id)
+        .where(
+            SkillCategoryRelation.category_id.in_(all_member_ids),
+            Skill.status == "published",
+            Skill.deleted_at.is_(None),
+        )
+        .group_by(SkillCategoryRelation.category_id)
+    ).all()
+    direct_counts = {category_id: int(skill_count or 0) for category_id, skill_count in count_rows}
+
+    return {
+        row.id: sum(direct_counts.get(member_id, 0) for member_id in member_ids_by_root[row.id])
+        for row in rows
+    }
+
+
+def _map_categories(rows: List[Category], counts: Dict[UUID, int]) -> List[CategoryItemOut]:
     return [
         CategoryItemOut(
             id=str(row.id),
@@ -28,7 +76,7 @@ def _map_categories(rows: List[Category]) -> List[CategoryItemOut]:
             icon=row.icon,
             color=row.color,
             description=row.description,
-            skillCount=row.skill_count,
+            skillCount=counts.get(row.id, 0),
         )
         for row in rows
     ]
@@ -135,13 +183,39 @@ def _map_tutorials(rows: List[Tutorial]) -> List[TutorialItemOut]:
     ]
 
 
+def _map_scene_counts(db: Session) -> List[HomepageSceneCountOut]:
+    rows = db.execute(
+        select(
+            Tag.slug,
+            func.count(func.distinct(Skill.id)).label("skill_count"),
+        )
+        .join(SkillTag, SkillTag.tag_id == Tag.id)
+        .join(Skill, Skill.id == SkillTag.skill_id)
+        .where(
+            Tag.type == "scene",
+            Tag.deleted_at.is_(None),
+            Tag.is_enabled.is_(True),
+            Skill.status == "published",
+            Skill.deleted_at.is_(None),
+        )
+        .group_by(Tag.slug, Tag.sort_order)
+        .order_by(Tag.sort_order.asc(), Tag.slug.asc())
+    ).all()
+    return [HomepageSceneCountOut(slug=slug, count=int(skill_count or 0)) for slug, skill_count in rows]
+
+
 def get_homepage_data(db: Session, user_id: Optional[UUID] = None) -> HomepageOut:
     category_rows = db.scalars(
         select(Category)
-        .where(Category.is_enabled.is_(True), Category.deleted_at.is_(None))
+        .where(
+            Category.is_enabled.is_(True),
+            Category.deleted_at.is_(None),
+            Category.level == 1,
+        )
         .order_by(Category.sort_order.asc(), Category.created_at.asc())
         .limit(8)
     ).all()
+    category_counts = _map_category_skill_counts(db, category_rows)
 
     featured_rows = db.execute(
         select(Skill, Category)
@@ -155,12 +229,58 @@ def get_homepage_data(db: Session, user_id: Optional[UUID] = None) -> HomepageOu
         .limit(3)
     ).all()
 
+    if len(featured_rows) < 4:
+        featured_ids = {skill.id for skill, _ in featured_rows}
+        fallback_stmt = (
+            select(Skill, Category)
+            .join(Category, Skill.category_id == Category.id, isouter=True)
+            .where(Skill.status == "published", Skill.deleted_at.is_(None))
+            .order_by(
+                Skill.favorite_count.desc(),
+                Skill.view_count.desc(),
+                Skill.published_at.desc(),
+                Skill.created_at.desc(),
+            )
+            .limit(4 - len(featured_rows))
+        )
+        if featured_ids:
+            fallback_stmt = fallback_stmt.where(Skill.id.not_in(featured_ids))
+        fallback_rows = db.execute(fallback_stmt).all()
+        featured_rows = [*featured_rows, *fallback_rows]
+
+    if len(featured_rows) < 4:
+        featured_ids = {skill.id for skill, _ in featured_rows}
+        random_stmt = (
+            select(Skill, Category)
+            .join(Category, Skill.category_id == Category.id, isouter=True)
+            .where(Skill.status == "published", Skill.deleted_at.is_(None))
+            .order_by(func.random())
+            .limit(4 - len(featured_rows))
+        )
+        if featured_ids:
+            random_stmt = random_stmt.where(Skill.id.not_in(featured_ids))
+        random_rows = db.execute(random_stmt).all()
+        featured_rows = [*featured_rows, *random_rows]
+
     latest_rows = db.execute(
         select(Skill, Category)
         .join(Category, Skill.category_id == Category.id, isouter=True)
         .where(Skill.status == "published", Skill.deleted_at.is_(None))
         .order_by(Skill.published_at.desc(), Skill.created_at.desc())
         .limit(8)
+    ).all()
+
+    trending_rows = db.execute(
+        select(Skill, Category)
+        .join(Category, Skill.category_id == Category.id, isouter=True)
+        .where(Skill.status == "published", Skill.deleted_at.is_(None))
+        .order_by(
+            Skill.favorite_count.desc(),
+            Skill.view_count.desc(),
+            Skill.published_at.desc(),
+            Skill.created_at.desc(),
+        )
+        .limit(5)
     ).all()
 
     tutorial_rows = db.scalars(
@@ -182,6 +302,7 @@ def get_homepage_data(db: Session, user_id: Optional[UUID] = None) -> HomepageOu
     )
 
     featured_skills = _map_skills(db, featured_rows, user_id)
+    trending_skills = _map_skills(db, trending_rows, user_id)
     latest_skills = _map_skills(db, latest_rows, user_id)
 
     stats = HomepageStatsOut(
@@ -192,9 +313,11 @@ def get_homepage_data(db: Session, user_id: Optional[UUID] = None) -> HomepageOu
     )
 
     return HomepageOut(
-        categories=_map_categories(category_rows),
+        categories=_map_categories(category_rows, category_counts),
         featuredSkills=featured_skills,
+        trendingSkills=trending_skills,
         latestSkills=latest_skills,
+        sceneCounts=_map_scene_counts(db),
         tutorials=_map_tutorials(tutorial_rows),
         stats=stats,
     )

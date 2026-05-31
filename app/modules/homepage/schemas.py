@@ -52,9 +52,16 @@ class HomepageStatsOut(BaseModel):
     beginnerTutorials: int
 
 
+class HomepageSceneCountOut(BaseModel):
+    slug: str
+    count: int
+
+
 class HomepageOut(BaseModel):
     categories: List[CategoryItemOut]
     featuredSkills: List[HomepageSkillOut]
+    trendingSkills: List[HomepageSkillOut]
     latestSkills: List[HomepageSkillOut]
+    sceneCounts: List[HomepageSceneCountOut]
     tutorials: List[TutorialItemOut]
     stats: HomepageStatsOut
