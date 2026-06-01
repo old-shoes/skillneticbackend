@@ -52,7 +52,7 @@ def _clear_session_cookie(response: Response) -> None:
 @router.post("/auth/register")
 def register(payload: AuthRegisterIn, request: Request, db: Session = Depends(get_db)) -> dict:
     data = AuthService(db).register(payload, request)
-    response = JSONResponse(success({"user": data.user.model_dump()}))
+    response = JSONResponse(success({"user": data.user.model_dump(mode="json")}))
     _set_session_cookie(response, data.token, max_age=_session_max_age(SESSION_DAYS))
     return response
 
@@ -60,7 +60,7 @@ def register(payload: AuthRegisterIn, request: Request, db: Session = Depends(ge
 @router.post("/auth/login")
 def login(payload: AuthLoginIn, request: Request, db: Session = Depends(get_db)) -> dict:
     data = AuthService(db).login(payload, request)
-    response = JSONResponse(success({"user": data.user.model_dump()}))
+    response = JSONResponse(success({"user": data.user.model_dump(mode="json")}))
     _set_session_cookie(response, data.token, max_age=_session_max_age(SESSION_DAYS))
     return response
 
@@ -74,7 +74,7 @@ def send_email_code(payload: AuthEmailCodeSendIn, request: Request, db: Session 
 @router.post("/auth/register/email")
 def register_email(payload: AuthEmailRegisterIn, request: Request, db: Session = Depends(get_db)) -> dict:
     data = AuthService(db).register_email(payload, request)
-    response = JSONResponse(success({"user": data.user.model_dump()}))
+    response = JSONResponse(success({"user": data.user.model_dump(mode="json")}))
     _set_session_cookie(response, data.token, max_age=_session_max_age(SESSION_DAYS))
     return response
 
@@ -82,7 +82,7 @@ def register_email(payload: AuthEmailRegisterIn, request: Request, db: Session =
 @router.post("/auth/login/email")
 def login_email(payload: AuthEmailLoginIn, request: Request, db: Session = Depends(get_db)) -> dict:
     data = AuthService(db).login_email(payload, request)
-    response = JSONResponse(success({"user": data.user.model_dump()}))
+    response = JSONResponse(success({"user": data.user.model_dump(mode="json")}))
     max_age = _session_max_age(REMEMBER_SESSION_DAYS if payload.rememberMe else SHORT_SESSION_DAYS)
     _set_session_cookie(response, data.token, max_age=max_age)
     return response
