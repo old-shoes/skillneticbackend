@@ -60,10 +60,15 @@ def get_skill_filters(db: Session = Depends(get_db)) -> dict:
 @router.get("/skills/{slug}")
 def get_skill_detail(
     slug: str,
+    trackView: bool = Query(default=False),
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    data = SkillService(db).get_skill_detail(slug, current_user.id if current_user else None)
+    data = SkillService(db).get_skill_detail(
+        slug,
+        current_user.id if current_user else None,
+        increment_view=trackView,
+    )
     if data is None:
         raise HTTPException(status_code=404, detail="skill not found")
     return success(data.model_dump())
