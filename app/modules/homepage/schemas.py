@@ -57,11 +57,27 @@ class HomepageSceneCountOut(BaseModel):
     count: int
 
 
+class HomepageActivityOut(BaseModel):
+    user: str
+    action: str
+    target: str
+    ago: str
+
+
+class HomepageContributorOut(BaseModel):
+    user: str
+    score: int
+    submissionCount: int
+    favoriteCount: int
+
+
 class HomepageOut(BaseModel):
     categories: List[CategoryItemOut]
     featuredSkills: List[HomepageSkillOut]
     trendingSkills: List[HomepageSkillOut]
     latestSkills: List[HomepageSkillOut]
+    latestActivities: List[HomepageActivityOut]
+    weeklyContributors: List[HomepageContributorOut]
     sceneCounts: List[HomepageSceneCountOut]
     tutorials: List[TutorialItemOut]
     stats: HomepageStatsOut

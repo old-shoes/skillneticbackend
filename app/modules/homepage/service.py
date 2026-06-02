@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set
 
 from uuid import UUID
@@ -7,10 +8,13 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.modules.auth.models import User
 from app.modules.category.models import Category
 from app.modules.homepage.models import HomepageStats
 from app.modules.homepage.schemas import (
     CategoryItemOut,
+    HomepageActivityOut,
+    HomepageContributorOut,
     HomepageOut,
     HomepageSceneCountOut,
     HomepageSkillOut,
@@ -20,6 +24,7 @@ from app.modules.homepage.schemas import (
 )
 from app.modules.skill.models import Skill, SkillCategoryRelation, SkillTag, Tag
 from app.modules.me.models import UserFavorite
+from app.modules.skill_submissions.models import SkillSubmission
 from app.modules.tutorial.models import Tutorial
 
 def _map_category_skill_counts(db: Session, rows: List[Category]) -> Dict[UUID, int]:
@@ -204,6 +209,161 @@ def _map_scene_counts(db: Session) -> List[HomepageSceneCountOut]:
     return [HomepageSceneCountOut(slug=slug, count=int(skill_count or 0)) for slug, skill_count in rows]
 
 
+def _format_ago(value: Optional[datetime]) -> str:
+    if value is None:
+        return "刚刚"
+    current = datetime.now(timezone.utc)
+    target = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    seconds = max(0, int((current - target).total_seconds()))
+    if seconds < 60:
+        return "刚刚"
+    if seconds < 3600:
+        return f"{max(1, seconds // 60)} 分钟前"
+    if seconds < 86400:
+        return f"{max(1, seconds // 3600)} 小时前"
+    return f"{max(1, seconds // 86400)} 天前"
+
+
+def _map_latest_activities(db: Session) -> List[HomepageActivityOut]:
+    submission_rows = db.execute(
+        select(User.nickname, SkillSubmission.title, SkillSubmission.submitted_at)
+        .join(User, User.id == SkillSubmission.submitter_id)
+        .where(
+            SkillSubmission.deleted_at.is_(None),
+            SkillSubmission.status.in_(("pending_review", "approved", "needs_revision")),
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+        )
+        .order_by(SkillSubmission.submitted_at.desc(), SkillSubmission.created_at.desc())
+        .limit(5)
+    ).all()
+
+    favorite_rows = db.execute(
+        select(User.nickname, Skill.title, UserFavorite.created_at)
+        .join(User, User.id == UserFavorite.user_id)
+        .join(Skill, Skill.id == UserFavorite.target_id)
+        .where(
+            UserFavorite.target_type == "skill",
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+            Skill.deleted_at.is_(None),
+            Skill.status == "published",
+        )
+        .order_by(UserFavorite.created_at.desc())
+        .limit(5)
+    ).all()
+
+    items: List[tuple[str, str, str, Optional[datetime]]] = []
+    items.extend((nickname, "提交了新的Skill", title, submitted_at) for nickname, title, submitted_at in submission_rows if nickname and title)
+    items.extend((nickname, "收藏了 Skill", title, created_at) for nickname, title, created_at in favorite_rows if nickname and title)
+    items.sort(key=lambda item: item[3] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+    return [
+        HomepageActivityOut(
+            user=user,
+            action=action,
+            target=target,
+            ago=_format_ago(created_at),
+        )
+        for user, action, target, created_at in items[:5]
+    ]
+
+
+def _week_start_utc() -> datetime:
+    now = datetime.now(timezone.utc)
+    return (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _map_weekly_contributors(db: Session) -> List[HomepageContributorOut]:
+    week_start = _week_start_utc()
+
+    submission_rows = db.execute(
+        select(
+            SkillSubmission.submitter_id,
+            User.nickname,
+            func.count(func.distinct(SkillSubmission.approved_skill_id)).label("submission_count"),
+        )
+        .join(User, User.id == SkillSubmission.submitter_id)
+        .where(
+            SkillSubmission.deleted_at.is_(None),
+            SkillSubmission.submitter_id.is_not(None),
+            SkillSubmission.approved_skill_id.is_not(None),
+            SkillSubmission.status == "approved",
+            SkillSubmission.reviewed_at.is_not(None),
+            SkillSubmission.reviewed_at >= week_start,
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+        )
+        .group_by(SkillSubmission.submitter_id, User.nickname)
+    ).all()
+
+    rows_by_user: Dict[UUID, dict[str, object]] = {}
+    approved_skill_ids: List[UUID] = []
+
+    for user_id, nickname, submission_count in submission_rows:
+        if user_id is None or not nickname:
+            continue
+        rows_by_user[user_id] = {
+            "user": nickname,
+            "submissionCount": int(submission_count or 0),
+            "favoriteCount": 0,
+        }
+
+    approved_skill_rows = db.execute(
+        select(
+            SkillSubmission.submitter_id,
+            SkillSubmission.approved_skill_id,
+        )
+        .where(
+            SkillSubmission.deleted_at.is_(None),
+            SkillSubmission.submitter_id.is_not(None),
+            SkillSubmission.approved_skill_id.is_not(None),
+            SkillSubmission.status == "approved",
+            SkillSubmission.reviewed_at.is_not(None),
+            SkillSubmission.reviewed_at >= week_start,
+        )
+    ).all()
+
+    skill_owner_map: Dict[UUID, UUID] = {}
+    for user_id, approved_skill_id in approved_skill_rows:
+        if user_id is None or approved_skill_id is None:
+            continue
+        skill_owner_map[approved_skill_id] = user_id
+        approved_skill_ids.append(approved_skill_id)
+
+    if approved_skill_ids:
+        favorite_rows = db.execute(
+            select(
+                UserFavorite.target_id,
+                func.count(UserFavorite.id).label("favorite_count"),
+            )
+            .where(
+                UserFavorite.target_type == "skill",
+                UserFavorite.target_id.in_(approved_skill_ids),
+                UserFavorite.created_at >= week_start,
+            )
+            .group_by(UserFavorite.target_id)
+        ).all()
+
+        for skill_id, favorite_count in favorite_rows:
+            owner_id = skill_owner_map.get(skill_id)
+            if owner_id is None or owner_id not in rows_by_user:
+                continue
+            rows_by_user[owner_id]["favoriteCount"] = int(rows_by_user[owner_id]["favoriteCount"]) + int(favorite_count or 0)
+
+    contributors = [
+        HomepageContributorOut(
+            user=str(item["user"]),
+            submissionCount=int(item["submissionCount"]),
+            favoriteCount=int(item["favoriteCount"]),
+            score=int(item["submissionCount"]) * 10 + int(item["favoriteCount"]) * 3,
+        )
+        for item in rows_by_user.values()
+    ]
+    contributors.sort(key=lambda item: (item.score, item.favoriteCount, item.submissionCount, item.user), reverse=True)
+    return contributors[:5]
+
+
 def get_homepage_data(db: Session, user_id: Optional[UUID] = None) -> HomepageOut:
     category_rows = db.scalars(
         select(Category)
@@ -317,6 +477,8 @@ def get_homepage_data(db: Session, user_id: Optional[UUID] = None) -> HomepageOu
         featuredSkills=featured_skills,
         trendingSkills=trending_skills,
         latestSkills=latest_skills,
+        latestActivities=_map_latest_activities(db),
+        weeklyContributors=_map_weekly_contributors(db),
         sceneCounts=_map_scene_counts(db),
         tutorials=_map_tutorials(tutorial_rows),
         stats=stats,
