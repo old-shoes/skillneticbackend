@@ -61,6 +61,11 @@ class SkillListItemOut(BaseModel):
     publishedAt: datetime
     isFeatured: bool
     isHot: bool
+    sourceType: str = "user"
+    sourceUrl: Optional[str] = None
+    sourceName: Optional[str] = None
+    originalAuthor: Optional[str] = None
+    license: Optional[str] = None
     isFavorited: bool = False
 
 
@@ -103,6 +108,11 @@ class SkillDetailOut(BaseModel):
     updatedAt: datetime
     isFeatured: bool
     isHot: bool
+    sourceType: str = "user"
+    sourceUrl: Optional[str] = None
+    sourceName: Optional[str] = None
+    originalAuthor: Optional[str] = None
+    license: Optional[str] = None
     isFavorited: bool = False
 
 

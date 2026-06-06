@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     github_client_id: str = ""
     github_client_secret: str = ""
     github_callback_url: str = "http://localhost:8000/api/v1/auth/github/callback"
+    github_api_token: str = ""
     test_auth_token: str = "ai-skill-test-token"
     test_auth_email: str = "submit-demo@aiskill.local"
     cors_origins: List[str] = [
