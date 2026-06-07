@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,6 +12,8 @@ from app.core.response import success
 from app.modules.admin_common.deps import get_current_admin
 from app.modules.admin_common.permissions import require_permission
 from app.modules.admin_common.response import page_response
+from app.modules.github_skills.models import SkillGithubSource
+from app.modules.skill.models import Skill
 
 
 router = APIRouter()
@@ -99,3 +102,28 @@ def get_skill(
     if row is None:
         raise HTTPException(status_code=404, detail="Skill 不存在")
     return success(dict(row))
+
+
+@router.delete("/{skill_id}")
+def delete_skill(
+    skill_id: str,
+    admin: dict = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    require_permission(admin, "skill:write")
+    skill = db.get(Skill, skill_id)
+    if skill is None or skill.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+
+    skill.deleted_at = datetime.now(timezone.utc)
+    if skill.status == "published":
+        skill.status = "deleted"
+    db.add(skill)
+
+    sources = db.query(SkillGithubSource).filter(SkillGithubSource.skill_id == skill.id).all()
+    for source in sources:
+        source.skill_id = None
+        db.add(source)
+
+    db.commit()
+    return success({"success": True})

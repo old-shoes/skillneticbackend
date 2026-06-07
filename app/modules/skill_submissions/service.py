@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 from app.modules.me.engagement import NotificationService, PointService
 from app.modules.auth.models import User
 from app.modules.category.models import Category
-from app.modules.skill.models import Skill, SkillCategoryRelation
+from app.modules.github_skills.models import SkillGithubSource
+from app.modules.github_skills.schemas import GithubSkillParseOut
+from app.modules.github_skills.service import GithubSkillService
+from app.modules.skill.models import Skill, SkillCategoryRelation, SkillTag
 from app.modules.skill.models import Tag
 from app.modules.skill_submissions.models import (
     SkillSubmission,
@@ -40,6 +43,8 @@ from app.modules.skill_submissions.schemas import (
     SkillSubmissionReviewDraftIn,
     SkillSubmissionStatus,
     SkillSubmissionSubmitIn,
+    UserGithubSkillSubmitIn,
+    UserSkillSubmitResultOut,
     SkillReviewLogOut,
     SkillRiskCheckOut,
     SkillPromptVariableOut,
@@ -361,6 +366,42 @@ class SkillSubmissionService:
             index += 1
         return current
 
+    def _ensure_skill_tags(self, skill_id: UUID, names: List[str], tag_type: str) -> None:
+        for name in names:
+            cleaned = (name or "").strip()
+            if not cleaned:
+                continue
+            slug = self._slugify(cleaned)[:80] or cleaned[:80]
+            tag = self.db.scalar(
+                select(Tag).where(
+                    Tag.slug == slug,
+                    Tag.type == tag_type,
+                    Tag.deleted_at.is_(None),
+                )
+            )
+            if tag is None:
+                tag = Tag(name=cleaned[:50], slug=slug, type=tag_type, is_enabled=True)
+                self.db.add(tag)
+                self.db.flush()
+            exists = self.db.scalar(
+                select(SkillTag).where(
+                    SkillTag.skill_id == skill_id,
+                    SkillTag.tag_id == tag.id,
+                )
+            )
+            if exists is None:
+                self.db.add(SkillTag(skill_id=skill_id, tag_id=tag.id))
+
+    def _sync_submission_skill_tags(self, submission: SkillSubmission, skill: Skill) -> None:
+        self.db.execute(delete(SkillTag).where(SkillTag.skill_id == skill.id))
+        self._ensure_skill_tags(skill.id, list(submission.tags or []), "type")
+        scene_names = [
+            next((item["label"] for item in USE_CASE_OPTIONS if item["value"] == use_case), use_case)
+            for use_case in (submission.use_cases or [])
+            if str(use_case).strip()
+        ]
+        self._ensure_skill_tags(skill.id, scene_names, "scene")
+
     def _submission_to_category(self, submission: SkillSubmission) -> Optional[SubmissionCategoryOut]:
         if not submission.category_id or not submission.category_name:
             return None
@@ -443,6 +484,13 @@ class SkillSubmissionService:
             slug=submission.slug,
             summary=submission.summary,
             description=submission.description,
+            submissionType=submission.submission_type,
+            sourceType=submission.source_type,
+            githubUrl=submission.github_url,
+            repoFullName=submission.repo_full_name,
+            sourceName=submission.source_name,
+            originalAuthor=submission.original_author,
+            license=submission.license,
             categoryId=str(submission.category_id) if submission.category_id else "",
             categoryIds=category_ids,
             categoryName=submission.category_name,
@@ -465,6 +513,7 @@ class SkillSubmissionService:
             exampleInputs=list(submission.example_inputs or []),
             exampleOutput=submission.example_output or {},
             usageGuide=submission.usage_guide,
+            attachmentUrls=list(submission.attachment_urls or []),
             faqs=list(submission.faqs or []),
             submitNote=submission.submit_note,
             status=submission.status,
@@ -564,6 +613,7 @@ class SkillSubmissionService:
         tags = [str(item).strip() for item in (submission.tags or []) if str(item).strip()]
         skill_type = (submission.skill_type or "").strip()
         use_cases = [str(item).strip() for item in (submission.use_cases or []) if str(item).strip()]
+        is_github_submission = submission.submission_type == "github" or submission.source_type in ("github", "user_github")
 
         if not title:
             required_errors.append("title")
@@ -572,10 +622,13 @@ class SkillSubmissionService:
 
         if not summary:
             required_errors.append("summary")
-        elif len(summary) < 10 or len(summary) > 80:
+        elif len(summary) < 10 or len(summary) > (160 if is_github_submission else 80):
             required_errors.append("summary")
 
-        if description and (len(description) < 20 or len(description) > 500):
+        if description and (
+            len(description) < 20
+            or (not is_github_submission and len(description) > 500)
+        ):
             required_errors.append("description")
 
         if not submission.category_id:
@@ -605,7 +658,8 @@ class SkillSubmissionService:
             )
 
     def _upsert_skill_from_submission(self, submission: SkillSubmission) -> Skill:
-        skill_content = (submission.system_prompt or "").strip() or submission.description
+        is_github_submission = submission.submission_type == "github" or submission.source_type in ("github", "user_github")
+        skill_content = (submission.description or "").strip() if is_github_submission else ((submission.system_prompt or "").strip() or submission.description)
         submission_category_ids = [
             self._parse_uuid(str(item), "categoryIds")
             for item in (submission.category_ids or [])
@@ -635,12 +689,20 @@ class SkillSubmissionService:
                 view_count=0,
                 is_featured=False,
                 is_hot=False,
+                source_type=submission.source_type,
+                source_url=submission.github_url if submission.source_type == "user_github" else None,
+                source_name=submission.source_name,
+                original_author=submission.original_author,
+                license=submission.license,
+                is_verified_source=submission.source_type == "user_github",
+                last_source_synced_at=datetime.now(timezone.utc) if submission.source_type == "user_github" else None,
                 status="published",
                 published_at=datetime.now(timezone.utc),
             )
             self.db.add(skill)
             self.db.flush()
             self._sync_skill_categories(skill, submission_category_ids or ([submission.category_id] if submission.category_id else []))
+            self._sync_submission_skill_tags(submission, skill)
             submission.approved_skill_id = skill.id
         else:
             skill.title = submission.title
@@ -653,15 +715,41 @@ class SkillSubmissionService:
             skill.use_case = (submission.use_cases or [""])[0] if submission.use_cases else None
             skill.search_keywords = " ".join([submission.title, submission.summary, *(submission.tags or [])])
             skill.recommended_models = list(submission.recommended_models or [])
+            skill.source_type = submission.source_type
+            skill.source_url = submission.github_url if submission.source_type == "user_github" else None
+            skill.source_name = submission.source_name
+            skill.original_author = submission.original_author
+            skill.license = submission.license
+            skill.is_verified_source = submission.source_type == "user_github"
+            skill.last_source_synced_at = datetime.now(timezone.utc) if submission.source_type == "user_github" else None
             skill.status = "published"
             if skill.published_at is None:
                 skill.published_at = datetime.now(timezone.utc)
             self._sync_skill_categories(skill, submission_category_ids or ([submission.category_id] if submission.category_id else []))
+            self._sync_submission_skill_tags(submission, skill)
+        if submission.source_type == "user_github" and submission.github_url and submission.repo_full_name:
+            source = self.db.scalar(select(SkillGithubSource).where(SkillGithubSource.repo_full_name == submission.repo_full_name))
+            if source is None:
+                source = SkillGithubSource(
+                    skill_id=skill.id,
+                    repo_full_name=submission.repo_full_name,
+                    owner_login=submission.repo_full_name.split("/")[0],
+                    repo_name=submission.repo_full_name.split("/")[-1],
+                    github_url=submission.github_url,
+                )
+                self.db.add(source)
+            source.skill_id = skill.id
+            source.github_url = submission.github_url
+            source.original_author = submission.original_author
+            source.license_name = submission.license
+            source.last_synced_at = datetime.now(timezone.utc)
         return skill
 
     def create_draft(self, payload: SkillSubmissionDraftCreateIn, submitter_id: UUID) -> SkillSubmissionDraftOut:
         submission = SkillSubmission(
             submitter_id=submitter_id,
+            submission_type="manual",
+            source_type="user",
             title=payload.title.strip(),
             summary=payload.summary.strip(),
             status="draft",
@@ -732,6 +820,8 @@ class SkillSubmissionService:
             submission.example_output = payload.exampleOutput.model_dump()
         if payload.usageGuide is not None:
             submission.usage_guide = payload.usageGuide
+        if payload.attachmentUrls is not None:
+            submission.attachment_urls = [item.strip() for item in payload.attachmentUrls if item.strip()]
         if payload.faqs is not None:
             submission.faqs = [item.model_dump() for item in payload.faqs if item.question.strip() or item.answer.strip()]
         if payload.submitNote is not None:
@@ -817,6 +907,10 @@ class SkillSubmissionService:
                 summary=item.summary,
                 coverImage=item.cover_image,
                 tags=item.tags or [],
+                submissionType=item.submission_type,
+                sourceType=item.source_type,
+                githubUrl=item.github_url,
+                repoFullName=item.repo_full_name,
                 status=item.status,
                 difficulty=item.difficulty,
                 category=self._submission_to_category(item),
@@ -828,6 +922,119 @@ class SkillSubmissionService:
         return SkillSubmissionListOut(
             list=items,
             pagination=PaginationOut.from_total(query.page, query.pageSize, total),
+        )
+
+    def parse_user_github_skill(self, github_url: str) -> GithubSkillParseOut:
+        return GithubSkillService(self.db).parse_repo(github_url)
+
+    def submit_user_github_skill(self, payload: UserGithubSkillSubmitIn, submitter_id: UUID) -> UserSkillSubmitResultOut:
+        github_service = GithubSkillService(self.db)
+        parsed, preview = github_service._build_parse_result(payload.github_url)
+
+        duplicate_skill = self.db.scalar(
+            select(Skill.id).where(
+                Skill.source_url == parsed.github_url,
+                Skill.source_type.in_(("github", "user_github")),
+                Skill.deleted_at.is_(None),
+            )
+        )
+        if duplicate_skill is not None:
+            raise HTTPException(status_code=400, detail="该 GitHub 仓库已被收录或提交")
+
+        duplicate_submission = self.db.scalar(
+            select(SkillSubmission.id).where(
+                SkillSubmission.github_url == parsed.github_url,
+                SkillSubmission.deleted_at.is_(None),
+                SkillSubmission.status.in_(("draft", "pending_review", "approved", "needs_revision")),
+            )
+        )
+        if duplicate_submission is not None:
+            raise HTTPException(status_code=400, detail="该 GitHub 仓库已被收录或提交")
+
+        category = None
+        category_slug = (payload.category or parsed.parsed.category or "").strip()
+        if category_slug:
+            category = self.db.scalar(
+                select(Category).where(
+                    Category.slug == category_slug,
+                    Category.deleted_at.is_(None),
+                    Category.is_enabled.is_(True),
+                )
+            )
+
+        metadata = preview.skill_md_frontmatter.get("metadata") if isinstance(preview.skill_md_frontmatter, dict) else None
+        original_author = metadata.get("author") if isinstance(metadata, dict) else None
+        cleaned_tags = [item.strip() for item in payload.tags if item.strip()]
+        normalized_use_cases = self._normalize_use_cases(payload.use_cases or parsed.parsed.use_cases or [])
+
+        submission = SkillSubmission(
+            submitter_id=submitter_id,
+            submission_type="github",
+            source_type="user_github",
+            title=payload.title.strip(),
+            slug=self._slugify(payload.title),
+            summary=payload.summary.strip(),
+            description=(payload.description or parsed.parsed.description or "").strip(),
+            github_url=parsed.github_url,
+            repo_full_name=parsed.repo_full_name,
+            source_name=parsed.repo_full_name,
+            original_author=original_author,
+            license=parsed.license,
+            category_id=category.id if category else None,
+            category_ids=[str(category.id)] if category else [],
+            category_name=category.name if category else None,
+            tags=cleaned_tags or list(parsed.parsed.tags or []),
+            skill_type=payload.skill_type or parsed.parsed.skill_type or "agent",
+            recommended_models=[],
+            difficulty=payload.difficulty or parsed.parsed.difficulty or "intermediate",
+            estimated_time="",
+            cover_image=(payload.cover_url or "").strip() or None,
+            target_audience=[],
+            use_cases=normalized_use_cases,
+            highlights=[],
+            prompt_role=(parsed.parsed.prompt_role or payload.title).strip()[:100],
+            prompt_file_name="SKILL.md" if parsed.skill_md_found else None,
+            system_prompt=(parsed.parsed.system_prompt or preview.skill_md_preview or "").strip(),
+            output_formats=[],
+            creativity=0.7,
+            precision=0.6,
+            output_language="zh-CN",
+            output_length="",
+            example_inputs=[],
+            example_output={"rawText": (payload.example_output or "").strip() or None},
+            usage_guide=(payload.usage_guide or "").strip(),
+            attachment_urls=[item.strip() for item in payload.attachment_urls if item.strip()],
+            faqs=[],
+            submit_note=None,
+            status="pending_review",
+            submitted_at=datetime.now(timezone.utc),
+        )
+        self.db.add(submission)
+        self.db.flush()
+        self._ensure_review_checks(submission)
+        self._write_log(
+            submission,
+            "submit",
+            "user",
+            self._get_submitter_out(submitter_id).nickname,
+            None,
+            "pending_review",
+            comment="GitHub Skill 提交审核",
+        )
+        if self._get_submitter_user(submission.submitter_id) is not None:
+            NotificationService(self.db).create_notification(
+                user_id=submission.submitter_id,
+                type="skill_pending_review",
+                title=f"你的 Skill「{submission.title}」已提交审核",
+                content="我们会尽快完成审核，并在状态变化后通知你。",
+                related_type="skill_submission",
+                related_id=submission.id,
+            )
+        self.db.commit()
+        return UserSkillSubmitResultOut(
+            skill_id=str(submission.approved_skill_id or submission.id),
+            submission_id=str(submission.id),
+            status=submission.status,
         )
 
     def _stats(self) -> AdminSkillSubmissionStatsOut:

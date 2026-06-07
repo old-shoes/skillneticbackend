@@ -17,6 +17,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.admin_tutorials.router import router as admin_tutorials_router
 from app.modules.admin_users.router import router as admin_users_router
 from app.modules.categories.router import router as categories_router
+from app.modules.github_skills.router import router as github_skills_router
 from app.modules.homepage.router import router as homepage_router
 from app.modules.me.router import router as me_router
 from app.modules.skills.router import router as skills_router
@@ -58,6 +59,7 @@ app.include_router(admin_logs_router, prefix="/api/admin/v1")
 app.include_router(admin_tutorials_router, prefix="/api/admin/v1")
 app.include_router(admin_skill_taxonomy_router, prefix="/api/admin/v1")
 app.include_router(admin_skill_submissions_router, prefix="/api/admin/v1")
+app.include_router(github_skills_router, prefix="/api/admin/v1/github-skills")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 

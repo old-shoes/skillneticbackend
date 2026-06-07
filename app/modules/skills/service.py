@@ -385,6 +385,11 @@ class SkillService:
                     publishedAt=skill.published_at or skill.created_at,
                     isFeatured=skill.is_featured,
                     isHot=skill.is_hot,
+                    sourceType=skill.source_type,
+                    sourceUrl=skill.source_url,
+                    sourceName=skill.source_name,
+                    originalAuthor=skill.original_author,
+                    license=skill.license,
                     isFavorited=skill.id in favorited_ids,
                 )
             )
@@ -447,6 +452,11 @@ class SkillService:
             updatedAt=skill.updated_at,
             isFeatured=skill.is_featured,
             isHot=skill.is_hot,
+            sourceType=skill.source_type,
+            sourceUrl=skill.source_url,
+            sourceName=skill.source_name,
+            originalAuthor=skill.original_author,
+            license=skill.license,
             isFavorited=skill.id in favorited_ids,
         )
 
