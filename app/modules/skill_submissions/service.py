@@ -5,7 +5,7 @@ from typing import Iterable, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.modules.me.engagement import NotificationService, PointService
@@ -89,6 +89,17 @@ SKILL_TYPE_VALUE_SET = {item["value"] for item in SKILL_TYPE_OPTIONS}
 class SkillSubmissionService:
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def _acquire_github_submission_lock(self, key: str) -> None:
+        normalized = (key or "").strip().lower()
+        if not normalized:
+            return
+        # Serialize writes for the same GitHub repo so duplicate submissions
+        # cannot slip through concurrent duplicate checks.
+        self.db.execute(
+            text("select pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": normalized},
+        )
 
     def _parse_uuid(self, value: str, field_name: str) -> UUID:
         try:
@@ -930,6 +941,7 @@ class SkillSubmissionService:
     def submit_user_github_skill(self, payload: UserGithubSkillSubmitIn, submitter_id: UUID) -> UserSkillSubmitResultOut:
         github_service = GithubSkillService(self.db)
         parsed, preview = github_service._build_parse_result(payload.github_url)
+        self._acquire_github_submission_lock(parsed.repo_full_name or parsed.github_url)
 
         duplicate_skill = self.db.scalar(
             select(Skill.id).where(
