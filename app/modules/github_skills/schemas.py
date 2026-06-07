@@ -15,6 +15,9 @@ class GithubSkillParsedOut(BaseModel):
     skill_type: Optional[str] = None
     difficulty: Optional[Literal["beginner", "intermediate", "advanced"]] = None
     tags: List[str] = Field(default_factory=list)
+    use_cases: List[str] = Field(default_factory=list)
+    prompt_role: Optional[str] = None
+    system_prompt: str = ""
 
 
 class GithubSkillParseOut(BaseModel):

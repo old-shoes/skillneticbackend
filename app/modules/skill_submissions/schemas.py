@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 SkillSubmitStep = Literal["basic", "prompt", "example", "review"]
 SkillSubmissionStatus = Literal["draft", "pending_review", "approved", "rejected", "needs_revision", "withdrawn"]
+SkillSubmissionType = Literal["manual", "github"]
+SkillSourceType = Literal["official", "user", "github", "user_github"]
 SkillDifficulty = Literal["beginner", "intermediate", "advanced"]
 SkillType = Literal["prompt", "workflow", "tutorial", "tool_config", "agent"]
 SkillOutputFormat = Literal["title", "body", "tags", "interaction", "section"]
@@ -69,6 +71,7 @@ class SkillSubmissionDraftIn(BaseModel):
     exampleInputs: Optional[List[SkillExampleInputIn]] = None
     exampleOutput: Optional[SkillExampleOutputIn] = None
     usageGuide: Optional[str] = None
+    attachmentUrls: Optional[List[str]] = None
     faqs: Optional[List[SkillFaqIn]] = None
     submitNote: Optional[str] = Field(default=None, max_length=500)
 
@@ -80,6 +83,33 @@ class SkillSubmissionDraftCreateIn(BaseModel):
 
 class SkillSubmissionSubmitIn(BaseModel):
     submitNote: Optional[str] = Field(default=None, max_length=500)
+
+
+class UserGithubSkillParseIn(BaseModel):
+    github_url: str
+
+
+class UserGithubSkillSubmitIn(BaseModel):
+    github_url: str
+    title: str = Field(min_length=2, max_length=100)
+    summary: str = Field(min_length=10, max_length=160)
+    description: str = ""
+    category: Optional[str] = None
+    skill_type: Optional[SkillType] = None
+    difficulty: Optional[SkillDifficulty] = None
+    tags: List[str] = Field(default_factory=list)
+    use_cases: List[str] = Field(default_factory=list)
+    usage_guide: Optional[str] = None
+    example_input: Optional[str] = None
+    example_output: Optional[str] = None
+    cover_url: Optional[str] = None
+    attachment_urls: List[str] = Field(default_factory=list)
+
+
+class UserSkillSubmitResultOut(BaseModel):
+    skill_id: str
+    submission_id: str
+    status: SkillSubmissionStatus
 
 
 class SkillSubmissionApproveIn(BaseModel):
@@ -193,6 +223,13 @@ class SkillSubmissionDraftOut(BaseModel):
     slug: Optional[str] = None
     summary: str
     description: str
+    submissionType: SkillSubmissionType = "manual"
+    sourceType: SkillSourceType = "user"
+    githubUrl: Optional[str] = None
+    repoFullName: Optional[str] = None
+    sourceName: Optional[str] = None
+    originalAuthor: Optional[str] = None
+    license: Optional[str] = None
     categoryId: str
     categoryIds: List[str]
     categoryName: Optional[str] = None
@@ -215,6 +252,7 @@ class SkillSubmissionDraftOut(BaseModel):
     exampleInputs: List[SkillExampleInputIn]
     exampleOutput: SkillExampleOutputIn
     usageGuide: str
+    attachmentUrls: List[str]
     faqs: List[SkillFaqIn]
     submitNote: Optional[str] = None
     status: SkillSubmissionStatus
@@ -233,6 +271,10 @@ class SkillSubmissionListItemOut(BaseModel):
     summary: str
     coverImage: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    submissionType: SkillSubmissionType = "manual"
+    sourceType: SkillSourceType = "user"
+    githubUrl: Optional[str] = None
+    repoFullName: Optional[str] = None
     status: SkillSubmissionStatus
     difficulty: SkillDifficulty
     category: Optional[SubmissionCategoryOut] = None

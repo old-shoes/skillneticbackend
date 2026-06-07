@@ -18,6 +18,8 @@ from app.modules.skill_submissions.schemas import (
     SkillSubmissionRequestRevisionIn,
     SkillSubmissionReviewDraftIn,
     SkillSubmissionSubmitIn,
+    UserGithubSkillParseIn,
+    UserGithubSkillSubmitIn,
 )
 from app.modules.skill_submissions.service import SkillSubmissionService
 from app.modules.skill_submissions.service import DEFAULT_ADMIN_ID
@@ -65,6 +67,27 @@ def create_skill_submission_draft(
     db: Session = Depends(get_db),
 ) -> dict:
     data = SkillSubmissionService(db).create_draft(payload, UUID(user_id))
+    return success(data.model_dump())
+
+
+@user_router.post("/user/skills/github/parse")
+def parse_user_github_skill(
+    payload: UserGithubSkillParseIn,
+    user_id: str = Depends(require_user_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    del user_id
+    data = SkillSubmissionService(db).parse_user_github_skill(payload.github_url)
+    return success(data.model_dump())
+
+
+@user_router.post("/user/skills/github/submit")
+def submit_user_github_skill(
+    payload: UserGithubSkillSubmitIn,
+    user_id: str = Depends(require_user_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    data = SkillSubmissionService(db).submit_user_github_skill(payload, UUID(user_id))
     return success(data.model_dump())
 
 

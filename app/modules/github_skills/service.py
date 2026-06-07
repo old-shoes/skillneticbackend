@@ -3,12 +3,14 @@ from __future__ import annotations
 import base64
 import json
 import re
+import ssl
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib import error, parse, request
 from uuid import UUID
 
+import certifi
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -38,6 +40,137 @@ FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
 README_LIMIT = 8000
 SUMMARY_ZH_LIMIT = 120
 SUMMARY_EN_LIMIT = 180
+USE_CASE_KEYWORDS = {
+    "content_creation": [
+        "content creation",
+        "copywriting",
+        "writing",
+        "article",
+        "blog",
+        "newsletter",
+        "storytelling",
+        "内容创作",
+        "写作",
+        "文案",
+        "文章",
+    ],
+    "social_media": [
+        "social media",
+        "xiaohongshu",
+        "tiktok",
+        "instagram",
+        "twitter",
+        "linkedin",
+        "reddit",
+        "社交媒体",
+        "小红书",
+        "抖音",
+        "运营",
+    ],
+    "marketing": [
+        "marketing",
+        "growth",
+        "seo",
+        "campaign",
+        "conversion",
+        "lead generation",
+        "推广",
+        "营销",
+        "投放",
+        "转化",
+    ],
+    "ecommerce": [
+        "ecommerce",
+        "shopify",
+        "amazon",
+        "product listing",
+        "sku",
+        "电商",
+        "商品",
+        "店铺",
+    ],
+    "productivity": [
+        "productivity",
+        "workflow",
+        "automation",
+        "knowledge base",
+        "notion",
+        "office",
+        "效率",
+        "自动化",
+        "办公",
+        "流程",
+    ],
+    "learning": [
+        "learning",
+        "education",
+        "teaching",
+        "tutor",
+        "study",
+        "course",
+        "学习",
+        "教育",
+        "教学",
+        "辅导",
+    ],
+    "data_analysis": [
+        "data analysis",
+        "analytics",
+        "research",
+        "insight",
+        "dashboard",
+        "sql",
+        "excel",
+        "spreadsheet",
+        "数据分析",
+        "研究",
+        "报表",
+        "洞察",
+    ],
+    "development": [
+        "development",
+        "developer",
+        "engineering",
+        "frontend",
+        "backend",
+        "coding",
+        "programming",
+        "testing",
+        "debug",
+        "api",
+        "开发",
+        "编程",
+        "代码",
+        "调试",
+        "测试",
+    ],
+}
+USE_CASE_ALIASES = {
+    "content": "content_creation",
+    "content_creation": "content_creation",
+    "social": "social_media",
+    "social_media": "social_media",
+    "marketing": "marketing",
+    "ecommerce": "ecommerce",
+    "productivity": "productivity",
+    "learning": "learning",
+    "education": "learning",
+    "data_analysis": "data_analysis",
+    "analysis": "data_analysis",
+    "development": "development",
+    "engineering": "development",
+}
+USE_CASE_FRONTMATTER_KEYS = (
+    "use_cases",
+    "use_case",
+    "scenarios",
+    "scenario",
+    "applicable_scenarios",
+    "applicable_scenario",
+    "适用场景",
+    "使用场景",
+    "场景",
+)
 
 
 @dataclass
@@ -52,6 +185,7 @@ class ParsedGithubUrl:
 class GithubSkillService:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self.ssl_context = ssl.create_default_context(cafile=certifi.where())
 
     def parse_github_url(self, raw_url: str) -> ParsedGithubUrl:
         value = (raw_url or "").strip()
@@ -90,7 +224,7 @@ class GithubSkillService:
     def _github_json(self, url: str) -> Dict[str, Any]:
         req = request.Request(url, headers=self._github_headers())
         try:
-            with request.urlopen(req, timeout=20) as resp:
+            with request.urlopen(req, timeout=20, context=self.ssl_context) as resp:
                 body = resp.read().decode("utf-8")
                 return json.loads(body)
         except error.HTTPError as exc:
@@ -101,7 +235,7 @@ class GithubSkillService:
                 raise HTTPException(status_code=429, detail="GITHUB_RATE_LIMITED") from exc
             raise HTTPException(status_code=502, detail=f"github api failed: {exc.code}") from exc
         except error.URLError as exc:
-            raise HTTPException(status_code=502, detail="failed to connect to github api") from exc
+            raise HTTPException(status_code=502, detail="GitHub API 当前不可达，请检查网络或稍后重试") from exc
 
     def _repo_api(self, parsed: ParsedGithubUrl) -> Dict[str, Any]:
         return self._github_json(f"https://api.github.com/repos/{parsed.repo_full_name}")
@@ -113,6 +247,60 @@ class GithubSkillService:
             if exc.status_code == 404:
                 return None
             raise
+
+    def _root_contents_api(self, parsed: ParsedGithubUrl) -> List[Dict[str, Any]]:
+        payload = self._contents_api(parsed, "")
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        return []
+
+    def _markdown_priority(self, path: str, base_name: str) -> Tuple[int, int, str]:
+        normalized = path.strip()
+        lowered = normalized.lower()
+        base = base_name.lower()
+        if lowered == f"{base}.zh-cn.md":
+            return (0, 0, normalized)
+        if re.match(rf"^{re.escape(base)}\.zh(?:[-_].+)?\.md$", lowered):
+            return (0, 1, normalized)
+        if lowered == f"{base}.en.md":
+            return (1, 0, normalized)
+        if re.match(rf"^{re.escape(base)}\.en(?:[-_].+)?\.md$", lowered):
+            return (1, 1, normalized)
+        if lowered == f"{base}.md":
+            return (2, 0, normalized)
+        if re.match(rf"^{re.escape(base)}(?:\.[^.]+)?\.md$", lowered):
+            return (3, 0, normalized)
+        return (9, 9, normalized)
+
+    def _preferred_markdown(self, parsed: ParsedGithubUrl, base_name: str) -> Optional[Dict[str, Any]]:
+        root_items = self._root_contents_api(parsed)
+        prefix = base_name.lower()
+        candidates = [
+            item for item in root_items
+            if str(item.get("type") or "") == "file"
+            and str(item.get("name") or "").lower().startswith(prefix)
+            and str(item.get("name") or "").lower().endswith(".md")
+        ]
+        if not candidates:
+            return self._contents_api(parsed, f"{base_name}.md")
+
+        best = sorted(
+            candidates,
+            key=lambda item: self._markdown_priority(str(item.get("name") or ""), base_name),
+        )[0]
+        payload = self._contents_api(parsed, str(best.get("path") or best.get("name") or ""))
+        if payload:
+            return payload
+        return self._contents_api(parsed, f"{base_name}.md")
+
+    def _preferred_readme(self, parsed: ParsedGithubUrl) -> Optional[Dict[str, Any]]:
+        exact_readme = self._contents_api(parsed, "README.md")
+        if exact_readme:
+            return exact_readme
+        return self._preferred_markdown(parsed, "README")
+
+    def _preferred_skill_markdown(self, parsed: ParsedGithubUrl) -> Optional[Dict[str, Any]]:
+        return self._preferred_markdown(parsed, "SKILL")
 
     def _decode_content(self, payload: Optional[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         if not payload:
@@ -134,22 +322,61 @@ class GithubSkillService:
         frontmatter_text = match.group(1)
         body = content[match.end():]
         result: Dict[str, Any] = {}
-        stack: List[Tuple[int, Dict[str, Any]]] = [(0, result)]
-        for raw_line in frontmatter_text.splitlines():
+        stack: List[Tuple[int, Any]] = [(0, result)]
+        pending_list_key: Optional[str] = None
+        lines = frontmatter_text.splitlines()
+        for index, raw_line in enumerate(lines):
             line = raw_line.rstrip()
             if not line.strip() or line.strip().startswith("#"):
                 continue
             indent = len(line) - len(line.lstrip(" "))
-            key_part, _, value_part = line.strip().partition(":")
-            key = key_part.strip()
-            value = value_part.strip().strip("\"'")
-            while len(stack) > 1 and indent <= stack[-1][0]:
+            stripped = line.strip()
+            while len(stack) > 1 and indent < stack[-1][0]:
                 stack.pop()
             current = stack[-1][1]
+
+            if stripped.startswith("- "):
+                item_value = stripped[2:].strip().strip("\"'")
+                if isinstance(current, list):
+                    current.append(item_value)
+                    continue
+                if isinstance(current, dict) and pending_list_key:
+                    existing = current.get(pending_list_key)
+                    if not isinstance(existing, list):
+                        existing = []
+                        current[pending_list_key] = existing
+                    existing.append(item_value)
+                    stack.append((indent + 1, existing))
+                    continue
+
+            key_part, _, value_part = stripped.partition(":")
+            key = key_part.strip()
+            value = value_part.strip().strip("\"'")
+            pending_list_key = key
+
+            if not isinstance(current, dict):
+                continue
+
             if not value:
-                child: Dict[str, Any] = {}
-                current[key] = child
-                stack.append((indent, child))
+                next_significant = None
+                for later_raw in lines[index + 1:]:
+                    later = later_raw.rstrip()
+                    if not later.strip() or later.strip().startswith("#"):
+                        continue
+                    next_significant = later
+                    break
+                next_is_list_item = False
+                if next_significant is not None:
+                    next_indent = len(next_significant) - len(next_significant.lstrip(" "))
+                    next_is_list_item = next_indent > indent and next_significant.strip().startswith("- ")
+                if next_is_list_item:
+                    child_list: List[str] = []
+                    current[key] = child_list
+                    stack.append((indent + 1, child_list))
+                else:
+                    child = {}
+                    current[key] = child
+                    stack.append((indent + 1, child))
             else:
                 current[key] = value
         return result, body
@@ -169,23 +396,134 @@ class GithubSkillService:
             return stripped[:SUMMARY_ZH_LIMIT]
         return stripped[:SUMMARY_EN_LIMIT]
 
-    def _recommend_meta(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str], List[str]]:
+    def _preferred_description(
+        self,
+        *,
+        frontmatter_description: str,
+        skill_body: str,
+        readme_text: str,
+        repo_description: str,
+        selected_skill_path: Optional[str],
+        selected_readme_path: Optional[str],
+    ) -> str:
+        del selected_skill_path
+        del selected_readme_path
+        if readme_text:
+            return readme_text
+        if skill_body:
+            return skill_body
+        if frontmatter_description:
+            return frontmatter_description
+        if repo_description:
+            return repo_description
+        return ""
+
+    def _normalize_use_case_value(self, value: str) -> Optional[str]:
+        cleaned = re.sub(r"[\s\-]+", "_", (value or "").strip().lower()).strip("_")
+        if not cleaned:
+            return None
+        return USE_CASE_ALIASES.get(cleaned)
+
+    def _extract_prompt_role(self, frontmatter: Dict[str, Any], skill_body: str, title: str, skill_type: Optional[str]) -> Optional[str]:
+        metadata = frontmatter.get("metadata")
+        candidates = [
+            frontmatter.get("prompt_role"),
+            frontmatter.get("promptRole"),
+            frontmatter.get("role"),
+            metadata.get("prompt_role") if isinstance(metadata, dict) else None,
+            metadata.get("promptRole") if isinstance(metadata, dict) else None,
+            metadata.get("role") if isinstance(metadata, dict) else None,
+        ]
+        for item in candidates:
+            value = str(item or "").strip()
+            if value:
+                return value[:100]
+
+        heading_match = re.search(r"(?im)^#{1,3}\s*(?:role|prompt role|角色|提示词角色)\s*[:：]?\s*(.+?)\s*$", skill_body or "")
+        if heading_match:
+            return heading_match.group(1).strip()[:100]
+
+        first_line = next((line.strip() for line in (skill_body or "").splitlines() if line.strip()), "")
+        if first_line.lower().startswith("you are "):
+            return title[:100]
+
+        if skill_type == "agent":
+            return (title or "GitHub Agent Skill")[:100]
+        if skill_type == "workflow":
+            return (title or "GitHub Workflow Skill")[:100]
+        return (title or "GitHub Prompt Skill")[:100] if title else None
+
+    def _extract_system_prompt(self, frontmatter: Dict[str, Any], skill_body: str) -> str:
+        metadata = frontmatter.get("metadata")
+        candidates = [
+            frontmatter.get("system_prompt"),
+            frontmatter.get("systemPrompt"),
+            frontmatter.get("prompt_template"),
+            frontmatter.get("promptTemplate"),
+            frontmatter.get("template"),
+            metadata.get("system_prompt") if isinstance(metadata, dict) else None,
+            metadata.get("systemPrompt") if isinstance(metadata, dict) else None,
+            metadata.get("prompt_template") if isinstance(metadata, dict) else None,
+            metadata.get("promptTemplate") if isinstance(metadata, dict) else None,
+        ]
+        for item in candidates:
+            value = str(item or "").strip()
+            if value:
+                return value
+        return (skill_body or "").strip()
+
+    def _parse_frontmatter_use_cases(self, frontmatter: Dict[str, Any]) -> List[str]:
+        raw_values: List[str] = []
+        for key in USE_CASE_FRONTMATTER_KEYS:
+            value = frontmatter.get(key)
+            if value is None:
+                metadata = frontmatter.get("metadata")
+                if isinstance(metadata, dict):
+                    value = metadata.get(key)
+            if value is None:
+                continue
+            if isinstance(value, list):
+                raw_values.extend([str(item) for item in value])
+            elif isinstance(value, str):
+                raw_values.extend([item.strip() for item in re.split(r"[,，/\n|]+", value) if item.strip()])
+
+        normalized: List[str] = []
+        seen = set()
+        for raw in raw_values:
+            mapped = self._normalize_use_case_value(raw)
+            if not mapped or mapped in seen:
+                continue
+            seen.add(mapped)
+            normalized.append(mapped)
+        return normalized
+
+    def _infer_use_cases(self, text: str) -> List[str]:
+        haystack = text.lower()
+        matched: List[str] = []
+        for use_case, keywords in USE_CASE_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in haystack:
+                    matched.append(use_case)
+                    break
+        return matched
+
+    def _recommend_meta(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str], List[str], List[str]]:
         haystack = text.lower()
         if any(word in haystack for word in ["investment", "market", "stock", "supply-chain", "value-chain", "research"]):
-            return "data-business-analysis", "agent", "advanced", ["投资研究", "供应链", "产业链", "股票研究", "市场扫描"]
+            return "data-business-analysis", "agent", "advanced", ["投资研究", "供应链", "产业链", "股票研究", "市场扫描"], ["data_analysis"]
         if any(word in haystack for word in ["code", "review", "testing", "architecture", "frontend", "backend"]):
-            return "engineering", "workflow", "intermediate", ["代码审查", "测试", "架构", "开发工具"]
+            return "engineering", "workflow", "intermediate", ["代码审查", "测试", "架构", "开发工具"], ["development", "productivity"]
         if any(word in haystack for word in ["image", "design", "visual", "poster", "canvas"]):
-            return "design-visual", "prompt", "intermediate", ["视觉设计", "图片生成", "创意设计"]
+            return "design-visual", "prompt", "intermediate", ["视觉设计", "图片生成", "创意设计"], ["content_creation"]
         if any(word in haystack for word in ["writing", "copy", "content", "blog", "article"]):
-            return "writing-content", "prompt", "beginner", ["写作", "内容创作", "文案"]
-        return None, None, None, []
+            return "writing-content", "prompt", "beginner", ["写作", "内容创作", "文案"], ["content_creation", "marketing"]
+        return None, None, None, [], []
 
     def _build_parse_result(self, github_url: str) -> Tuple[GithubSkillParseOut, GithubRepoPreview]:
         parsed_url = self.parse_github_url(github_url)
         repo_json = self._repo_api(parsed_url)
-        skill_md_payload = self._contents_api(parsed_url, "SKILL.md")
-        readme_payload = self._contents_api(parsed_url, "README.md")
+        skill_md_payload = self._preferred_skill_markdown(parsed_url)
+        readme_payload = self._preferred_readme(parsed_url)
         license_payload = self._contents_api(parsed_url, "LICENSE")
 
         skill_md_text, skill_md_path, skill_md_sha = self._decode_content(skill_md_payload)
@@ -195,12 +533,21 @@ class GithubSkillService:
         frontmatter, skill_body = self._extract_frontmatter(skill_md_text)
         metadata = frontmatter.get("metadata") if isinstance(frontmatter.get("metadata"), dict) else {}
 
-        description = str(frontmatter.get("description") or "").strip()
+        frontmatter_description = str(frontmatter.get("description") or "").strip()
         repo_description = str(repo_json.get("description") or "").strip()
         readme_first = self._first_paragraph(readme_text or "")
+        description = self._preferred_description(
+            frontmatter_description=frontmatter_description,
+            skill_body=skill_body,
+            readme_text=readme_text or "",
+            repo_description=repo_description,
+            selected_skill_path=skill_md_path,
+            selected_readme_path=readme_path,
+        )
         summary = (
             metadata.get("short-description")
             or metadata.get("short_description")
+            or self._truncate_summary(frontmatter_description)
             or self._truncate_summary(description)
             or self._truncate_summary(readme_first)
             or self._truncate_summary(repo_description)
@@ -208,7 +555,15 @@ class GithubSkillService:
         )
         title = str(frontmatter.get("name") or repo_json.get("name") or parsed_url.repo).strip()
         merged_text = "\n".join(filter(None, [title, description, repo_description, readme_first, skill_body]))
-        category, skill_type, difficulty, tags = self._recommend_meta(merged_text)
+        category, skill_type, difficulty, tags, use_cases = self._recommend_meta(merged_text)
+        explicit_use_cases = self._parse_frontmatter_use_cases(frontmatter)
+        inferred_use_cases = self._infer_use_cases("\n".join(filter(None, [merged_text, readme_text or ""])))
+        prompt_role = self._extract_prompt_role(frontmatter, skill_body, title, skill_type)
+        system_prompt = self._extract_system_prompt(frontmatter, skill_body)
+        final_use_cases: List[str] = []
+        for item in explicit_use_cases + use_cases + inferred_use_cases:
+            if item not in final_use_cases:
+                final_use_cases.append(item)
 
         parsed = GithubSkillParsedOut(
             title=title,
@@ -218,6 +573,9 @@ class GithubSkillService:
             skill_type=skill_type,
             difficulty=difficulty,
             tags=tags,
+            use_cases=final_use_cases,
+            prompt_role=prompt_role,
+            system_prompt=system_prompt,
         )
         license_name = None
         if isinstance(repo_json.get("license"), dict):
