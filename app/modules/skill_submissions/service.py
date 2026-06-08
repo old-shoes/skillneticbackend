@@ -318,7 +318,6 @@ class SkillSubmissionService:
                 {"label": "分类", "value": "categoryId"},
                 {"label": "标签", "value": "tags"},
                 {"label": "Skill 类型", "value": "skillType"},
-                {"label": "推荐模型", "value": "recommendedModels"},
                 {"label": "预计使用时长", "value": "estimatedTime"},
                 {"label": "适用场景", "value": "useCases"},
                 {"label": "封面", "value": "coverImage"},
@@ -633,7 +632,7 @@ class SkillSubmissionService:
 
         if not summary:
             required_errors.append("summary")
-        elif len(summary) < 10 or len(summary) > (160 if is_github_submission else 80):
+        elif (not is_github_submission and len(summary) < 10) or len(summary) > (160 if is_github_submission else 80):
             required_errors.append("summary")
 
         if description and (

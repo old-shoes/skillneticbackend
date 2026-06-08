@@ -6,7 +6,7 @@ import re
 import ssl
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib import error, parse, request
 from uuid import UUID
 
@@ -31,6 +31,7 @@ from app.modules.github_skills.schemas import (
     GithubSkillParseOut,
     GithubSkillParsedOut,
     GithubSkillSyncOut,
+    GithubTaxonomySuggestionOut,
 )
 from app.modules.skill.models import Skill, SkillCategoryRelation, SkillTag, Tag
 
@@ -59,9 +60,7 @@ USE_CASE_KEYWORDS = {
         "xiaohongshu",
         "tiktok",
         "instagram",
-        "twitter",
         "linkedin",
-        "reddit",
         "社交媒体",
         "小红书",
         "抖音",
@@ -96,10 +95,38 @@ USE_CASE_KEYWORDS = {
         "knowledge base",
         "notion",
         "office",
+        "clipboard",
+        "pasteboard",
+        "copy and paste",
+        "copy paste",
+        "clipboard manager",
+        "menu bar",
+        "hotkey",
+        "shortcut",
+        "floating panel",
+        "always-on-top",
+        "always on top",
+        "screenshot",
+        "screen capture",
+        "desktop utility",
+        "utility app",
+        "mac utility",
+        "macos utility",
+        "macos app",
+        "swiftui app",
         "效率",
         "自动化",
         "办公",
         "流程",
+        "粘贴板",
+        "剪贴板",
+        "截图",
+        "快捷键",
+        "菜单栏",
+        "置顶窗口",
+        "效率工具",
+        "桌面工具",
+        "macos 应用",
     ],
     "learning": [
         "learning",
@@ -116,7 +143,6 @@ USE_CASE_KEYWORDS = {
     "data_analysis": [
         "data analysis",
         "analytics",
-        "research",
         "insight",
         "dashboard",
         "sql",
@@ -159,6 +185,13 @@ USE_CASE_ALIASES = {
     "analysis": "data_analysis",
     "development": "development",
     "engineering": "development",
+    "software_development": "development",
+    "software development": "development",
+    "coding": "development",
+    "multi_agent_collaboration": "development",
+    "multi agent collaboration": "development",
+    "code_generation": "development",
+    "code generation": "development",
 }
 USE_CASE_LABELS = {
     "content_creation": "内容创作",
@@ -198,9 +231,29 @@ TAG_KEYWORDS = {
     "工作流编排": ["workflow", "pipeline", "automation", "orchestration", "编排"],
     "智能体": ["agent", "multi-agent", "assistant", "copilot", "智能体"],
     "提示词工程": ["prompt", "system prompt", "prompt template", "提示词"],
-    "内容创作": ["content", "writing", "copywriting", "blog", "article", "文案", "写作"],
-    "视觉设计": ["design", "image", "visual", "poster", "ui", "ux", "设计", "图片"],
-    "数据分析": ["data", "analytics", "dashboard", "sql", "excel", "分析", "报表"],
+    "内容创作": ["content creation", "writing", "copywriting", "blog", "article", "文案", "写作"],
+    "视觉设计": ["visual design", "poster design", "graphic design", "ui design", "ux design", "设计稿", "海报设计"],
+    "办公提效": [
+        "clipboard",
+        "pasteboard",
+        "clipboard manager",
+        "copy and paste",
+        "copy paste",
+        "screenshot",
+        "screen capture",
+        "menu bar",
+        "hotkey",
+        "productivity",
+        "efficiency",
+        "剪贴板",
+        "粘贴板",
+        "截图",
+        "菜单栏",
+        "快捷键",
+        "办公提效",
+        "效率工具",
+    ],
+    "数据分析": ["data analysis", "analytics", "dashboard", "sql", "excel", "分析", "报表", "data interpreter"],
     "学习研究": ["study", "learning", "education", "tutorial", "course", "学习", "教程"],
     "营销推广": ["marketing", "seo", "campaign", "growth", "营销", "推广"],
     "电商运营": ["ecommerce", "shopify", "amazon", "listing", "sku", "电商"],
@@ -210,6 +263,109 @@ TAG_KEYWORDS = {
     "供应链": ["supply chain", "供应链"],
     "产业链": ["value chain", "产业链"],
 }
+NOISY_SECTION_TITLES = {
+    "news",
+    "tutorial",
+    "tutorials",
+    "support",
+    "citation",
+    "contact information",
+    "contributor form",
+    "quickstart & demo video",
+    "quickstart",
+}
+TAG_NOISY_SECTION_TITLES = NOISY_SECTION_TITLES | {
+    "quick install / 快速安装",
+    "quick install",
+    "installation",
+    "install",
+    "requirements / 系统要求",
+    "requirements",
+    "system requirements",
+    "build from source / 从源码构建",
+    "build from source",
+    "usage / 使用",
+    "usage",
+    "project structure / 项目结构",
+    "project structure",
+    "changelog / 更新日志",
+    "changelog",
+    "known issues / 已知问题",
+    "known issues",
+    "license",
+}
+MODEL_KEYWORDS: Dict[str, List[str]] = {
+    "openai": ["openai", "gpt-4", "gpt-4o", "gpt-4.1", "gpt-3.5", "chatgpt"],
+    "claude": ["claude", "anthropic"],
+    "gemini": ["gemini", "google ai", "google-generativeai"],
+    "ollama": ["ollama"],
+    "groq": ["groq"],
+    "azure-openai": ["azure openai", "azure-openai", "azure_openai"],
+    "deepseek": ["deepseek"],
+}
+GENERIC_TAG_CODES = {
+    "github",
+    "prompt",
+    "tutorial",
+    "workflow",
+    "paper",
+}
+SKILL_TYPE_PATTERNS: List[Tuple[str, str, List[str]]] = [
+    ("agent-framework", "agent", ["multi-agent framework", "agent framework", "multi agent", "software company", "agent team"]),
+    ("sdk-library", "tool_config", ["sdk", "library", "package", "pip install", "python package"]),
+    ("cli-tool", "tool_config", ["cli", "command line", "terminal", "npx", "python -m"]),
+    ("desktop-tool", "tool_config", ["macos app", "desktop app", "menu bar app", "clipboard manager", "screenshot tool", "swiftui", "swift app"]),
+    ("workflow-template", "workflow", ["workflow", "pipeline", "automation", "orchestration"]),
+    ("prompt-template", "prompt", ["prompt template", "system prompt", "prompt engineering"]),
+    ("github-repo", "workflow", ["github repository", "open source project", "repository"]),
+]
+SKILL_TYPE_CODE_TO_RUNTIME: Dict[str, str] = {
+    "agent-framework": "agent",
+    "github-repo": "workflow",
+    "sdk-library": "tool_config",
+    "cli-tool": "tool_config",
+    "desktop-tool": "tool_config",
+    "prompt-template": "prompt",
+    "workflow-template": "workflow",
+}
+
+
+@dataclass
+class ParsedGithubRepo:
+    owner: str
+    repo: str
+    url: str
+    repo_full_name: str
+    name: str
+    description: str
+    stars: int
+    forks: int
+    watchers: int
+    open_issues: int
+    language: Optional[str]
+    license: Optional[str]
+    topics: List[str]
+    readme_text: str
+    readme_texts: List[str]
+    skill_md_text: str
+    raw_repo: Dict[str, Any]
+
+
+@dataclass
+class TaxonomyCandidate:
+    code: str
+    name: str
+    aliases: List[str]
+    keywords: List[str]
+    source_type: str
+
+
+@dataclass
+class TaxonomyMatch:
+    code: str
+    name: str
+    score: float
+    reason: str
 
 
 @dataclass
@@ -279,6 +435,16 @@ class GithubSkillService:
     def _repo_api(self, parsed: ParsedGithubUrl) -> Dict[str, Any]:
         return self._github_json(f"https://api.github.com/repos/{parsed.repo_full_name}")
 
+    def _topics_api(self, parsed: ParsedGithubUrl) -> List[str]:
+        try:
+            payload = self._github_json(f"https://api.github.com/repos/{parsed.repo_full_name}/topics")
+        except HTTPException:
+            return []
+        names = payload.get("names")
+        if isinstance(names, list):
+            return [str(item).strip() for item in names if str(item).strip()]
+        return []
+
     def _contents_api(self, parsed: ParsedGithubUrl, path: str) -> Optional[Dict[str, Any]]:
         try:
             return self._github_json(f"https://api.github.com/repos/{parsed.repo_full_name}/contents/{parse.quote(path)}")
@@ -297,18 +463,25 @@ class GithubSkillService:
         normalized = path.strip()
         lowered = normalized.lower()
         base = base_name.lower()
+        if base == "readme":
+            if lowered == "readme_cn.md":
+                return (0, 0, normalized)
+            if lowered == "readme.zh-cn.md":
+                return (0, 1, normalized)
+            if lowered == "readme.md":
+                return (1, 0, normalized)
         if lowered == f"{base}.zh-cn.md":
-            return (0, 0, normalized)
-        if re.match(rf"^{re.escape(base)}\.zh(?:[-_].+)?\.md$", lowered):
-            return (0, 1, normalized)
-        if lowered == f"{base}.en.md":
-            return (1, 0, normalized)
-        if re.match(rf"^{re.escape(base)}\.en(?:[-_].+)?\.md$", lowered):
-            return (1, 1, normalized)
-        if lowered == f"{base}.md":
             return (2, 0, normalized)
-        if re.match(rf"^{re.escape(base)}(?:\.[^.]+)?\.md$", lowered):
+        if re.match(rf"^{re.escape(base)}\.zh(?:[-_].+)?\.md$", lowered):
+            return (2, 1, normalized)
+        if lowered == f"{base}.en.md":
             return (3, 0, normalized)
+        if re.match(rf"^{re.escape(base)}\.en(?:[-_].+)?\.md$", lowered):
+            return (3, 1, normalized)
+        if lowered == f"{base}.md":
+            return (4, 0, normalized)
+        if re.match(rf"^{re.escape(base)}(?:\.[^.]+)?\.md$", lowered):
+            return (5, 0, normalized)
         return (9, 9, normalized)
 
     def _preferred_markdown(self, parsed: ParsedGithubUrl, base_name: str) -> Optional[Dict[str, Any]]:
@@ -333,13 +506,71 @@ class GithubSkillService:
         return self._contents_api(parsed, f"{base_name}.md")
 
     def _preferred_readme(self, parsed: ParsedGithubUrl) -> Optional[Dict[str, Any]]:
-        exact_readme = self._contents_api(parsed, "README.md")
-        if exact_readme:
-            return exact_readme
+        for candidate in ("README_CN.md", "README.zh-CN.md", "README.md"):
+            exact_readme = self._contents_api(parsed, candidate)
+            if exact_readme:
+                return exact_readme
         return self._preferred_markdown(parsed, "README")
+
+    def _all_readme_payloads(self, parsed: ParsedGithubUrl) -> List[Dict[str, Any]]:
+        root_items = self._root_contents_api(parsed)
+        candidates = [
+            item
+            for item in root_items
+            if str(item.get("type") or "") == "file"
+            and str(item.get("name") or "").lower().startswith("readme")
+            and str(item.get("name") or "").lower().endswith(".md")
+        ]
+        payloads: List[Dict[str, Any]] = []
+        seen_paths = set()
+        for item in sorted(candidates, key=lambda row: self._markdown_priority(str(row.get("name") or ""), "README")):
+            path = str(item.get("path") or item.get("name") or "")
+            if not path or path in seen_paths:
+                continue
+            seen_paths.add(path)
+            payload = self._contents_api(parsed, path)
+            if payload:
+                payloads.append(payload)
+        return payloads
 
     def _preferred_skill_markdown(self, parsed: ParsedGithubUrl) -> Optional[Dict[str, Any]]:
         return self._preferred_markdown(parsed, "SKILL")
+
+    def _fetch_repo_bundle(self, parsed_url: ParsedGithubUrl) -> Tuple[ParsedGithubRepo, Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        repo_json = self._repo_api(parsed_url)
+        topics = self._topics_api(parsed_url)
+        skill_md_payload = self._preferred_skill_markdown(parsed_url)
+        readme_payload = self._preferred_readme(parsed_url)
+        all_readme_payloads = self._all_readme_payloads(parsed_url)
+        license_payload = self._contents_api(parsed_url, "LICENSE")
+        readme_text, _, _ = self._decode_content(readme_payload)
+        readme_texts = [text for text, _, _ in (self._decode_content(item) for item in all_readme_payloads) if text]
+        skill_md_text, _, _ = self._decode_content(skill_md_payload)
+
+        repo = ParsedGithubRepo(
+            owner=parsed_url.owner,
+            repo=parsed_url.repo,
+            url=parsed_url.normalized_url,
+            repo_full_name=parsed_url.repo_full_name,
+            name=str(repo_json.get("name") or parsed_url.repo).strip(),
+            description=str(repo_json.get("description") or "").strip(),
+            stars=int(repo_json.get("stargazers_count") or 0),
+            forks=int(repo_json.get("forks_count") or 0),
+            watchers=int(repo_json.get("subscribers_count") or repo_json.get("watchers_count") or 0),
+            open_issues=int(repo_json.get("open_issues_count") or 0),
+            language=str(repo_json.get("language") or "").strip() or None,
+            license=(
+                (repo_json.get("license") or {}).get("spdx_id")
+                if isinstance(repo_json.get("license"), dict)
+                else None
+            ),
+            topics=topics,
+            readme_text=readme_text or "",
+            readme_texts=readme_texts,
+            skill_md_text=skill_md_text or "",
+            raw_repo=repo_json,
+        )
+        return repo, skill_md_payload, readme_payload, license_payload
 
     def _decode_content(self, payload: Optional[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         if not payload:
@@ -427,6 +658,79 @@ class GithubSkillService:
                 return stripped
         return text.strip()
 
+    def _strip_noisy_markdown(self, text: str) -> str:
+        if not text:
+            return ""
+
+        cleaned = text
+        cleaned = re.sub(r"```.*?```", " ", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"<img[^>]*>", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        cleaned = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", cleaned)
+        cleaned = re.sub(r"\[[^\]]+\]\((https?://[^)]+)\)", " ", cleaned)
+        cleaned = re.sub(r"https?://\S+", " ", cleaned)
+
+        kept_lines: List[str] = []
+        skip_section = False
+        for raw_line in cleaned.splitlines():
+            line = raw_line.strip()
+            if not line:
+                if not skip_section:
+                    kept_lines.append("")
+                continue
+
+            heading = re.match(r"^#{1,6}\s+(.*)$", line)
+            if heading:
+                title = heading.group(1).strip().lower()
+                skip_section = title in NOISY_SECTION_TITLES
+                if not skip_section:
+                    kept_lines.append(line)
+                continue
+
+            lowered = line.lower()
+            if any(token in lowered for token in ["shields.io", "discord", "twitter follow", "producthunt", "youtube", "user-attachments"]):
+                continue
+            if skip_section:
+                continue
+            kept_lines.append(line)
+
+        cleaned = "\n".join(kept_lines)
+        cleaned = re.sub(r"\buse cases?\b.*", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\bresearcher\b", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\breceipt assistant\b", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\bdata interpreter\b", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"[`>*_#\-\[\]\(\)\|]", " ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned[:6000]
+
+    def _tag_signal_text(self, text: str) -> str:
+        if not text:
+            return ""
+
+        cleaned = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+        kept_lines: List[str] = []
+        skip_section = False
+        for raw_line in cleaned.splitlines():
+            line = raw_line.strip()
+            if not line:
+                if not skip_section:
+                    kept_lines.append("")
+                continue
+
+            heading = re.match(r"^#{1,6}\s+(.*)$", line)
+            if heading:
+                title = heading.group(1).strip().lower()
+                skip_section = title in TAG_NOISY_SECTION_TITLES
+                if not skip_section:
+                    kept_lines.append(line)
+                continue
+
+            if skip_section:
+                continue
+            kept_lines.append(line)
+
+        return self._strip_noisy_markdown("\n".join(kept_lines))
+
     def _truncate_summary(self, text: str) -> str:
         stripped = re.sub(r"\s+", " ", text.strip())
         if not stripped:
@@ -462,6 +766,22 @@ class GithubSkillService:
         if not cleaned:
             return None
         return USE_CASE_ALIASES.get(cleaned)
+
+    def _normalize_use_case_candidates(self, values: Iterable[str]) -> List[str]:
+        normalized: List[str] = []
+        seen = set()
+        for raw in values:
+            mapped = self._normalize_use_case_value(str(raw or ""))
+            if not mapped or mapped in seen:
+                continue
+            seen.add(mapped)
+            normalized.append(mapped)
+        return normalized
+
+    def _scene_matches_to_use_cases(self, matches: Iterable[TaxonomyMatch]) -> List[str]:
+        return self._normalize_use_case_candidates(
+            [item.code for item in matches] + [item.name for item in matches]
+        )
 
     def _extract_prompt_role(self, frontmatter: Dict[str, Any], skill_body: str, title: str, skill_type: Optional[str]) -> Optional[str]:
         metadata = frontmatter.get("metadata")
@@ -561,33 +881,352 @@ class GithubSkillService:
             normalized.append(cleaned)
         return normalized
 
+    def _normalize_text(self, text: str) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"[_-]+", " ", (text or "").lower())).strip()
+
+    def _contains_keyword(self, text: str, keyword: str) -> bool:
+        normalized_text = self._normalize_text(text)
+        normalized_keyword = self._normalize_text(keyword)
+        if not normalized_text or not normalized_keyword:
+            return False
+        if re.search(r"[\u4e00-\u9fff]", normalized_keyword):
+            return normalized_keyword in normalized_text
+        pattern = rf"(?<![a-z0-9]){re.escape(normalized_keyword)}(?![a-z0-9])"
+        return re.search(pattern, normalized_text) is not None
+
+    def _score_taxonomy_candidate(self, candidate: TaxonomyCandidate, text: str) -> Optional[TaxonomyMatch]:
+        normalized = self._normalize_text(text)
+        if not normalized:
+            return None
+
+        score = 0.0
+        reasons: List[str] = []
+
+        code_value = self._normalize_text(candidate.code)
+        if code_value and self._contains_keyword(normalized, code_value):
+            score += 8
+            reasons.append(f"命中 code: {candidate.code}")
+
+        name_value = self._normalize_text(candidate.name)
+        if name_value and self._contains_keyword(normalized, name_value):
+            score += 6
+            reasons.append(f"命中名称: {candidate.name}")
+
+        for alias in candidate.aliases:
+            alias_value = self._normalize_text(alias)
+            if alias_value and self._contains_keyword(normalized, alias_value):
+                score += 5
+                reasons.append(f"命中别名: {alias}")
+
+        for keyword in candidate.keywords:
+            keyword_value = self._normalize_text(keyword)
+            if keyword_value and self._contains_keyword(normalized, keyword_value):
+                score += 3 if " " in keyword_value else 1
+                reasons.append(f"命中关键词: {keyword}")
+
+        if score <= 0:
+            return None
+
+        return TaxonomyMatch(
+            code=candidate.code,
+            name=candidate.name,
+            score=score,
+            reason="；".join(reasons),
+        )
+
+    def _match_one(self, candidates: Iterable[TaxonomyCandidate], text: str, min_score: float = 3) -> Optional[TaxonomyMatch]:
+        matches = [item for item in (self._score_taxonomy_candidate(candidate, text) for candidate in candidates) if item and item.score >= min_score]
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (-item.score, item.code))
+        return matches[0]
+
+    def _match_many(
+        self,
+        candidates: Iterable[TaxonomyCandidate],
+        text: str,
+        *,
+        min_score: float = 2,
+        limit: int = 8,
+    ) -> List[TaxonomyMatch]:
+        matches = [item for item in (self._score_taxonomy_candidate(candidate, text) for candidate in candidates) if item and item.score >= min_score]
+        matches.sort(key=lambda item: (-item.score, item.code))
+        deduped: List[TaxonomyMatch] = []
+        seen = set()
+        for item in matches:
+            if item.code in seen:
+                continue
+            seen.add(item.code)
+            deduped.append(item)
+            if len(deduped) >= limit:
+                break
+        return deduped
+
+    def _category_candidates(self) -> List[TaxonomyCandidate]:
+        rows = self.db.scalars(
+            select(Category).where(Category.deleted_at.is_(None), Category.is_enabled.is_(True))
+        ).all()
+        return [
+            TaxonomyCandidate(
+                code=item.slug,
+                name=item.name,
+                aliases=[alias for alias in [item.name_en, item.slug.replace("-", " ")] if alias],
+                keywords=[item.description] if item.description else [],
+                source_type="category",
+            )
+            for item in rows
+        ]
+
+    def _tag_candidates(self, tag_type: str) -> List[TaxonomyCandidate]:
+        rows = self.db.scalars(
+            select(Tag).where(
+                Tag.deleted_at.is_(None),
+                Tag.is_enabled.is_(True),
+                Tag.type == tag_type,
+            )
+        ).all()
+        return [
+            TaxonomyCandidate(
+                code=item.slug,
+                name=item.name,
+                aliases=[item.slug.replace("-", " ")],
+                keywords=[item.name],
+                source_type=tag_type,
+            )
+            for item in rows
+        ]
+
+    def _model_candidates(self) -> List[TaxonomyCandidate]:
+        return [
+            TaxonomyCandidate(code=code, name=code, aliases=[code.replace("-", " ")], keywords=keywords, source_type="model")
+            for code, keywords in MODEL_KEYWORDS.items()
+        ]
+
+    def _skill_type_candidates(self) -> List[TaxonomyCandidate]:
+        return [
+            TaxonomyCandidate(
+                code=code,
+                name=code.replace("-", " "),
+                aliases=[label, normalized_type.replace("_", " ")],
+                keywords=keywords,
+                source_type="skill_type",
+            )
+            for code, normalized_type, keywords in SKILL_TYPE_PATTERNS
+            for label in [code.replace("-", " ")]
+        ]
+
+    def _build_search_text(self, repo: ParsedGithubRepo, title: str, description: str, frontmatter: Dict[str, Any], skill_body: str) -> str:
+        metadata = frontmatter.get("metadata") if isinstance(frontmatter.get("metadata"), dict) else {}
+        cleaned_description = self._strip_noisy_markdown(description)
+        cleaned_readme = self._strip_noisy_markdown(repo.readme_text[:15000])
+        cleaned_skill_body = self._strip_noisy_markdown(skill_body[:8000])
+        cleaned_skill_md = self._strip_noisy_markdown(repo.skill_md_text[:8000])
+        return "\n".join(
+            filter(
+                None,
+                [
+                    repo.name,
+                    title,
+                    repo.description,
+                    cleaned_description,
+                    repo.language or "",
+                    repo.license or "",
+                    " ".join(repo.topics or []),
+                    json.dumps(frontmatter, ensure_ascii=False) if frontmatter else "",
+                    json.dumps(metadata, ensure_ascii=False) if metadata else "",
+                    cleaned_readme,
+                    cleaned_skill_body,
+                    cleaned_skill_md,
+                ],
+            )
+        )
+
+    def _generate_suggested_taxonomies(
+        self,
+        repo: ParsedGithubRepo,
+        matched_tags: List[TaxonomyMatch],
+        matched_models: List[TaxonomyMatch],
+        category_match: Optional[TaxonomyMatch],
+        skill_type_match: Optional[TaxonomyMatch],
+    ) -> List[GithubTaxonomySuggestionOut]:
+        suggestions: List[GithubTaxonomySuggestionOut] = []
+        matched_tag_codes = {item.code for item in matched_tags}
+        matched_model_codes = {item.code for item in matched_models}
+
+        if category_match is None:
+            suggestions.append(
+                GithubTaxonomySuggestionOut(
+                    taxonomy_type="category",
+                    code="ai-agent-development" if any("agent" in topic.lower() for topic in repo.topics) else "github-repo",
+                    name="AI Agent / 智能体开发" if any("agent" in topic.lower() for topic in repo.topics) else "GitHub 仓库",
+                    reason="没有匹配到现有分类，建议后台审核确认",
+                )
+            )
+
+        if skill_type_match is None:
+            suggestions.append(
+                GithubTaxonomySuggestionOut(
+                    taxonomy_type="skill_type",
+                    code="agent-framework" if any("agent" in topic.lower() for topic in repo.topics) else "github-repo",
+                    name="Agent 框架" if any("agent" in topic.lower() for topic in repo.topics) else "GitHub 仓库",
+                    reason="没有匹配到现有类型，建议后台审核确认",
+                )
+            )
+
+        for topic in repo.topics[:12]:
+            code = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")
+            if not code or code in matched_tag_codes or code in matched_model_codes:
+                continue
+            suggestions.append(
+                GithubTaxonomySuggestionOut(
+                    taxonomy_type="tag",
+                    code=code[:80],
+                    name=topic[:50],
+                    reason=f"GitHub topic `{topic}` 未匹配到现有标签",
+                )
+            )
+
+        deduped: List[GithubTaxonomySuggestionOut] = []
+        seen = set()
+        for item in suggestions:
+            key = f"{item.taxonomy_type}:{item.code}"
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped
+
+    def _calculate_confidence(
+        self,
+        category_match: Optional[TaxonomyMatch],
+        skill_type_match: Optional[TaxonomyMatch],
+        scene_matches: List[TaxonomyMatch],
+        tag_matches: List[TaxonomyMatch],
+        model_matches: List[TaxonomyMatch],
+    ) -> float:
+        score = 0.0
+        if category_match:
+            score += 0.3
+        if skill_type_match:
+            score += 0.25
+        if scene_matches:
+            score += 0.2
+        if len(tag_matches) >= 2:
+            score += 0.15
+        if model_matches:
+            score += 0.1
+        return round(min(score, 1.0), 2)
+
+    def _runtime_skill_type(self, matched_code: Optional[str], fallback: Optional[str]) -> Optional[str]:
+        if matched_code and matched_code in SKILL_TYPE_CODE_TO_RUNTIME:
+            return SKILL_TYPE_CODE_TO_RUNTIME[matched_code]
+        return fallback
+
     def _infer_use_cases(self, text: str) -> List[str]:
-        haystack = text.lower()
-        matched: List[str] = []
+        haystack = self._strip_noisy_markdown(text).lower()
+        scored: List[Tuple[str, int]] = []
         for use_case, keywords in USE_CASE_KEYWORDS.items():
+            score = 0
             for keyword in keywords:
-                if keyword in haystack:
-                    matched.append(use_case)
-                    break
-        return matched
+                if self._contains_keyword(haystack, keyword):
+                    score += 1
+            if score > 0:
+                scored.append((use_case, score))
+        scored.sort(key=lambda item: (-item[1], item[0]))
+        return [name for name, _ in scored[:3]]
 
     def _infer_tags(self, text: str) -> List[str]:
-        haystack = text.lower()
-        matched: List[str] = []
+        haystack = self._tag_signal_text(text).lower()
+        matched: List[Tuple[str, int]] = []
         for label, keywords in TAG_KEYWORDS.items():
+            score = 0
             for keyword in keywords:
-                if keyword.lower() in haystack:
-                    matched.append(label)
-                    break
-        return matched
+                if self._contains_keyword(haystack, keyword):
+                    score += 1
+            if score > 0:
+                matched.append((label, score))
+        matched.sort(key=lambda item: (-item[1], item[0]))
+        return [name for name, _ in matched[:6]]
+
+    def _extract_tags_from_readmes(self, repo: ParsedGithubRepo) -> List[str]:
+        readme_source = "\n".join(repo.readme_texts or ([repo.readme_text] if repo.readme_text else []))
+        return self._infer_tags(readme_source)
+
+    def _filter_tags(
+        self,
+        tags: List[str],
+        *,
+        category: Optional[str],
+        skill_type: Optional[str],
+        use_cases: List[str],
+        signal_text: str,
+    ) -> List[str]:
+        filtered: List[str] = []
+        lowered_signal = signal_text.lower()
+        is_productivity_tool = (
+            category == "office"
+            or skill_type == "tool_config"
+            or "productivity" in use_cases
+        )
+
+        for tag in tags:
+            if is_productivity_tool and tag in {"内容创作", "测试自动化", "视觉设计", "营销推广", "学习研究"}:
+                if tag == "内容创作" and self._contains_keyword(lowered_signal, "content creation"):
+                    filtered.append(tag)
+                elif tag == "测试自动化" and (
+                    self._contains_keyword(lowered_signal, "automated testing")
+                    or self._contains_keyword(lowered_signal, "unit test")
+                    or self._contains_keyword(lowered_signal, "pytest")
+                ):
+                    filtered.append(tag)
+                else:
+                    continue
+            else:
+                filtered.append(tag)
+
+        deduped: List[str] = []
+        seen = set()
+        for item in filtered:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        return deduped[:8]
 
     def _recommend_meta(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str], List[str], List[str]]:
         haystack = text.lower()
         if any(word in haystack for word in ["investment", "equity research", "stock", "stocks", "supply chain", "value chain", "market scan"]):
             return "data-business-analysis", "agent", "advanced", ["投资研究", "股票研究"], ["data_analysis"]
+        if any(
+            word in haystack
+            for word in [
+                "clipboard",
+                "pasteboard",
+                "clipboard manager",
+                "copy and paste",
+                "screenshot",
+                "screen capture",
+                "menu bar",
+                "hotkey",
+                "macos",
+                "swiftui",
+                "desktop app",
+                "floating panel",
+                "always-on-top",
+                "always on top",
+                "粘贴板",
+                "剪贴板",
+                "截图",
+                "菜单栏",
+                "快捷键",
+                "浮动面板",
+            ]
+        ):
+            return "office", "tool_config", "beginner", ["办公提效"], ["productivity"]
         if any(word in haystack for word in ["code", "review", "testing", "architecture", "frontend", "backend"]):
             return "engineering", "workflow", "intermediate", ["代码审查", "测试自动化"], ["development", "productivity"]
-        if any(word in haystack for word in ["image", "design", "visual", "poster", "canvas"]):
+        if any(word in haystack for word in ["image", "design", "visual", "poster", "canvas", "illustration"]):
             return "design-visual", "prompt", "intermediate", ["视觉设计", "图片生成", "创意设计"], ["content_creation"]
         if any(word in haystack for word in ["writing", "copy", "content", "blog", "article"]):
             return "writing-content", "prompt", "beginner", ["写作", "内容创作", "文案"], ["content_creation", "marketing"]
@@ -595,10 +1234,8 @@ class GithubSkillService:
 
     def _build_parse_result(self, github_url: str) -> Tuple[GithubSkillParseOut, GithubRepoPreview]:
         parsed_url = self.parse_github_url(github_url)
-        repo_json = self._repo_api(parsed_url)
-        skill_md_payload = self._preferred_skill_markdown(parsed_url)
-        readme_payload = self._preferred_readme(parsed_url)
-        license_payload = self._contents_api(parsed_url, "LICENSE")
+        repo, skill_md_payload, readme_payload, license_payload = self._fetch_repo_bundle(parsed_url)
+        repo_json = repo.raw_repo
 
         skill_md_text, skill_md_path, skill_md_sha = self._decode_content(skill_md_payload)
         readme_text, readme_path, readme_sha = self._decode_content(readme_payload)
@@ -608,7 +1245,7 @@ class GithubSkillService:
         metadata = frontmatter.get("metadata") if isinstance(frontmatter.get("metadata"), dict) else {}
 
         frontmatter_description = str(frontmatter.get("description") or "").strip()
-        repo_description = str(repo_json.get("description") or "").strip()
+        repo_description = repo.description
         readme_first = self._first_paragraph(readme_text or "")
         description = self._preferred_description(
             frontmatter_description=frontmatter_description,
@@ -627,40 +1264,120 @@ class GithubSkillService:
             or self._truncate_summary(repo_description)
             or parsed_url.repo
         )
-        title = str(frontmatter.get("name") or repo_json.get("name") or parsed_url.repo).strip()
-        merged_text = "\n".join(filter(None, [title, description, repo_description, readme_first, skill_body]))
+        title = str(frontmatter.get("name") or repo.name or parsed_url.repo).strip()
+        merged_text = self._build_search_text(repo, title, description, frontmatter, skill_body)
+        category_match = self._match_one(self._category_candidates(), merged_text, min_score=3)
+        skill_type_match = self._match_one(self._skill_type_candidates(), merged_text, min_score=3)
+        scene_matches = [
+            item for item in self._match_many(self._tag_candidates("scene"), merged_text, min_score=2, limit=5)
+            if item.code not in GENERIC_TAG_CODES
+        ]
+        tag_matches = [
+            item for item in self._match_many(self._tag_candidates("type"), merged_text, min_score=1, limit=12)
+            if item.code not in GENERIC_TAG_CODES
+        ]
+        model_matches = self._match_many(self._model_candidates(), merged_text, min_score=1, limit=6)
         category, skill_type, difficulty, recommended_tags, use_cases = self._recommend_meta(merged_text)
         explicit_use_cases = self._parse_frontmatter_use_cases(frontmatter)
         inferred_use_cases = self._infer_use_cases("\n".join(filter(None, [merged_text, readme_text or ""])))
         explicit_tags = self._parse_frontmatter_tags(frontmatter)
-        inferred_tags = self._infer_tags("\n".join(filter(None, [merged_text, readme_text or ""])))
+        inferred_tags = self._extract_tags_from_readmes(repo)
         prompt_role = self._extract_prompt_role(frontmatter, skill_body, title, skill_type)
         system_prompt = self._extract_system_prompt(frontmatter, skill_body)
+        matched_scene_use_cases = self._scene_matches_to_use_cases(scene_matches)
+        normalized_use_cases = self._normalize_use_case_candidates(
+            [
+                *matched_scene_use_cases,
+                *explicit_use_cases,
+                *use_cases,
+                *inferred_use_cases,
+            ]
+        )
+        if not normalized_use_cases:
+            normalized_use_cases = inferred_use_cases or use_cases or explicit_use_cases
         final_use_cases: List[str] = []
-        for item in explicit_use_cases + use_cases + inferred_use_cases:
+        for item in normalized_use_cases:
             if item not in final_use_cases:
                 final_use_cases.append(item)
+        final_category = category_match.code if category_match else category
+        resolved_skill_type = self._runtime_skill_type(
+            skill_type_match.code if skill_type_match else None,
+            skill_type,
+        )
         final_tags: List[str] = []
         seen_tags = set()
-        for item in explicit_tags + recommended_tags + inferred_tags:
+        matched_tag_names = [item.name for item in tag_matches]
+        for item in explicit_tags + inferred_tags + matched_tag_names + recommended_tags:
             cleaned = str(item or "").strip()[:50]
             lowered = cleaned.lower()
             if not cleaned or lowered in seen_tags:
                 continue
             seen_tags.add(lowered)
             final_tags.append(cleaned)
+        final_tags = self._filter_tags(
+            final_tags,
+            category=final_category,
+            skill_type=resolved_skill_type,
+            use_cases=final_use_cases,
+            signal_text=self._tag_signal_text("\n".join(repo.readme_texts or ([repo.readme_text] if repo.readme_text else []))),
+        )
+        matched_taxonomies = {
+            "category": [category_match.code] if category_match else ([category] if category else []),
+            "skill_type": [skill_type_match.code] if skill_type_match else ([skill_type] if skill_type else []),
+            "scene": final_use_cases,
+            "tag": [item.code for item in tag_matches],
+            "model": [item.code for item in model_matches],
+        }
+        suggested_taxonomies = self._generate_suggested_taxonomies(
+            repo,
+            tag_matches,
+            model_matches,
+            category_match,
+            skill_type_match,
+        )
+        classify_confidence = self._calculate_confidence(
+            category_match,
+            skill_type_match,
+            scene_matches,
+            tag_matches,
+            model_matches,
+        )
+        match_reasons: Dict[str, Any] = {
+            "category": (
+                {"code": category_match.code, "reason": category_match.reason, "score": category_match.score}
+                if category_match
+                else None
+            ),
+            "skill_type": (
+                {"code": skill_type_match.code, "reason": skill_type_match.reason, "score": skill_type_match.score}
+                if skill_type_match
+                else None
+            ),
+            "scene": [
+                {"code": item.code, "reason": item.reason, "score": item.score}
+                for item in scene_matches
+                if self._normalize_use_case_value(item.code) or self._normalize_use_case_value(item.name)
+            ],
+            "tag": [{"code": item.code, "reason": item.reason, "score": item.score} for item in tag_matches],
+            "model": [{"code": item.code, "reason": item.reason, "score": item.score} for item in model_matches],
+        }
 
         parsed = GithubSkillParsedOut(
             title=title,
             summary=summary,
             description=description or repo_description or readme_first or parsed_url.repo,
-            category=category,
-            skill_type=skill_type,
+            category=final_category,
+            skill_type=resolved_skill_type,
             difficulty=difficulty,
             tags=final_tags,
             use_cases=final_use_cases,
+            models=[item.code for item in model_matches],
             prompt_role=prompt_role,
             system_prompt=system_prompt,
+            matched_taxonomies=matched_taxonomies,
+            suggested_taxonomies=suggested_taxonomies,
+            match_reasons=match_reasons,
+            classify_confidence=classify_confidence,
         )
         license_name = None
         if isinstance(repo_json.get("license"), dict):
@@ -679,6 +1396,8 @@ class GithubSkillService:
             watchers_count=int(repo_json.get("subscribers_count") or repo_json.get("watchers_count") or 0),
             open_issues_count=int(repo_json.get("open_issues_count") or 0),
             license=license_name,
+            language=repo.language,
+            topics=repo.topics,
             skill_md_found=bool(skill_md_payload),
             readme_found=bool(readme_payload),
             parsed=parsed,
@@ -709,13 +1428,13 @@ class GithubSkillService:
             repo_full_name=parsed.repo_full_name,
             github_url=parsed.github_url,
             import_status="pending_review",
-            parsed_title=payload.title,
-            parsed_summary=payload.summary,
+            parsed_title=payload.title or parsed.parsed.title,
+            parsed_summary=payload.summary or parsed.parsed.summary,
             parsed_description=parsed.parsed.description,
-            parsed_category=payload.category,
-            parsed_skill_type=payload.skill_type,
-            parsed_difficulty=payload.difficulty,
-            parsed_tags=payload.tags,
+            parsed_category=payload.category or parsed.parsed.category,
+            parsed_skill_type=payload.skill_type or parsed.parsed.skill_type,
+            parsed_difficulty=payload.difficulty or parsed.parsed.difficulty,
+            parsed_tags=payload.tags or parsed.parsed.tags,
             parsed_license=parsed.license,
             parsed_original_author=preview.skill_md_frontmatter.get("metadata", {}).get("author") if isinstance(preview.skill_md_frontmatter.get("metadata"), dict) else None,
             raw_repo_json=preview.repo,

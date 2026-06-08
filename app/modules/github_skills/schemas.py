@@ -7,6 +7,20 @@ class GithubSkillParseIn(BaseModel):
     github_url: str
 
 
+class GithubTaxonomySuggestionOut(BaseModel):
+    taxonomy_type: Literal["category", "skill_type", "scene", "tag", "model"]
+    code: str
+    name: str
+    reason: str
+    status: Literal["pending"] = "pending"
+
+
+class GithubTaxonomyMatchReasonOut(BaseModel):
+    code: str
+    reason: str
+    score: float
+
+
 class GithubSkillParsedOut(BaseModel):
     title: str
     summary: str
@@ -16,8 +30,13 @@ class GithubSkillParsedOut(BaseModel):
     difficulty: Optional[Literal["beginner", "intermediate", "advanced"]] = None
     tags: List[str] = Field(default_factory=list)
     use_cases: List[str] = Field(default_factory=list)
+    models: List[str] = Field(default_factory=list)
     prompt_role: Optional[str] = None
     system_prompt: str = ""
+    matched_taxonomies: Dict[str, List[str]] = Field(default_factory=dict)
+    suggested_taxonomies: List[GithubTaxonomySuggestionOut] = Field(default_factory=list)
+    match_reasons: Dict[str, Any] = Field(default_factory=dict)
+    classify_confidence: float = 0
 
 
 class GithubSkillParseOut(BaseModel):
@@ -31,6 +50,8 @@ class GithubSkillParseOut(BaseModel):
     watchers_count: int = 0
     open_issues_count: int = 0
     license: Optional[str] = None
+    language: Optional[str] = None
+    topics: List[str] = Field(default_factory=list)
     skill_md_found: bool = False
     readme_found: bool = False
     parsed: GithubSkillParsedOut
