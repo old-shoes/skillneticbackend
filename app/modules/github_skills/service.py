@@ -160,6 +160,16 @@ USE_CASE_ALIASES = {
     "development": "development",
     "engineering": "development",
 }
+USE_CASE_LABELS = {
+    "content_creation": "内容创作",
+    "social_media": "社交媒体运营",
+    "marketing": "营销推广",
+    "ecommerce": "电商转化",
+    "productivity": "办公提效",
+    "learning": "学习辅导",
+    "data_analysis": "数据分析",
+    "development": "编程开发",
+}
 USE_CASE_FRONTMATTER_KEYS = (
     "use_cases",
     "use_case",
@@ -171,6 +181,35 @@ USE_CASE_FRONTMATTER_KEYS = (
     "使用场景",
     "场景",
 )
+TAG_FRONTMATTER_KEYS = (
+    "tags",
+    "tag",
+    "keywords",
+    "keyword",
+    "labels",
+    "topics",
+    "标签",
+    "关键字",
+)
+TAG_KEYWORDS = {
+    "代码审查": ["code review", "review", "lint", "静态检查"],
+    "测试自动化": ["test", "testing", "pytest", "unit test", "e2e", "自动化测试"],
+    "调试排错": ["debug", "troubleshoot", "trace", "排错", "调试"],
+    "工作流编排": ["workflow", "pipeline", "automation", "orchestration", "编排"],
+    "智能体": ["agent", "multi-agent", "assistant", "copilot", "智能体"],
+    "提示词工程": ["prompt", "system prompt", "prompt template", "提示词"],
+    "内容创作": ["content", "writing", "copywriting", "blog", "article", "文案", "写作"],
+    "视觉设计": ["design", "image", "visual", "poster", "ui", "ux", "设计", "图片"],
+    "数据分析": ["data", "analytics", "dashboard", "sql", "excel", "分析", "报表"],
+    "学习研究": ["study", "learning", "education", "tutorial", "course", "学习", "教程"],
+    "营销推广": ["marketing", "seo", "campaign", "growth", "营销", "推广"],
+    "电商运营": ["ecommerce", "shopify", "amazon", "listing", "sku", "电商"],
+    "投资研究": ["investment", "equity research", "financial model", "投研", "投资研究"],
+    "股票研究": ["stock", "stocks", "证券", "股票"],
+    "市场扫描": ["market scan", "market monitoring", "行情", "市场扫描"],
+    "供应链": ["supply chain", "供应链"],
+    "产业链": ["value chain", "产业链"],
+}
 
 
 @dataclass
@@ -497,6 +536,31 @@ class GithubSkillService:
             normalized.append(mapped)
         return normalized
 
+    def _parse_frontmatter_tags(self, frontmatter: Dict[str, Any]) -> List[str]:
+        raw_values: List[str] = []
+        metadata = frontmatter.get("metadata") if isinstance(frontmatter.get("metadata"), dict) else {}
+        for key in TAG_FRONTMATTER_KEYS:
+            value = frontmatter.get(key)
+            if value is None and isinstance(metadata, dict):
+                value = metadata.get(key)
+            if value is None:
+                continue
+            if isinstance(value, list):
+                raw_values.extend([str(item).strip() for item in value if str(item).strip()])
+            elif isinstance(value, str):
+                raw_values.extend([item.strip() for item in re.split(r"[,，/\n|]+", value) if item.strip()])
+
+        normalized: List[str] = []
+        seen = set()
+        for raw in raw_values:
+            cleaned = raw.strip()[:50]
+            lowered = cleaned.lower()
+            if not cleaned or lowered in seen:
+                continue
+            seen.add(lowered)
+            normalized.append(cleaned)
+        return normalized
+
     def _infer_use_cases(self, text: str) -> List[str]:
         haystack = text.lower()
         matched: List[str] = []
@@ -507,12 +571,22 @@ class GithubSkillService:
                     break
         return matched
 
+    def _infer_tags(self, text: str) -> List[str]:
+        haystack = text.lower()
+        matched: List[str] = []
+        for label, keywords in TAG_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword.lower() in haystack:
+                    matched.append(label)
+                    break
+        return matched
+
     def _recommend_meta(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str], List[str], List[str]]:
         haystack = text.lower()
-        if any(word in haystack for word in ["investment", "market", "stock", "supply-chain", "value-chain", "research"]):
-            return "data-business-analysis", "agent", "advanced", ["投资研究", "供应链", "产业链", "股票研究", "市场扫描"], ["data_analysis"]
+        if any(word in haystack for word in ["investment", "equity research", "stock", "stocks", "supply chain", "value chain", "market scan"]):
+            return "data-business-analysis", "agent", "advanced", ["投资研究", "股票研究"], ["data_analysis"]
         if any(word in haystack for word in ["code", "review", "testing", "architecture", "frontend", "backend"]):
-            return "engineering", "workflow", "intermediate", ["代码审查", "测试", "架构", "开发工具"], ["development", "productivity"]
+            return "engineering", "workflow", "intermediate", ["代码审查", "测试自动化"], ["development", "productivity"]
         if any(word in haystack for word in ["image", "design", "visual", "poster", "canvas"]):
             return "design-visual", "prompt", "intermediate", ["视觉设计", "图片生成", "创意设计"], ["content_creation"]
         if any(word in haystack for word in ["writing", "copy", "content", "blog", "article"]):
@@ -555,15 +629,26 @@ class GithubSkillService:
         )
         title = str(frontmatter.get("name") or repo_json.get("name") or parsed_url.repo).strip()
         merged_text = "\n".join(filter(None, [title, description, repo_description, readme_first, skill_body]))
-        category, skill_type, difficulty, tags, use_cases = self._recommend_meta(merged_text)
+        category, skill_type, difficulty, recommended_tags, use_cases = self._recommend_meta(merged_text)
         explicit_use_cases = self._parse_frontmatter_use_cases(frontmatter)
         inferred_use_cases = self._infer_use_cases("\n".join(filter(None, [merged_text, readme_text or ""])))
+        explicit_tags = self._parse_frontmatter_tags(frontmatter)
+        inferred_tags = self._infer_tags("\n".join(filter(None, [merged_text, readme_text or ""])))
         prompt_role = self._extract_prompt_role(frontmatter, skill_body, title, skill_type)
         system_prompt = self._extract_system_prompt(frontmatter, skill_body)
         final_use_cases: List[str] = []
         for item in explicit_use_cases + use_cases + inferred_use_cases:
             if item not in final_use_cases:
                 final_use_cases.append(item)
+        final_tags: List[str] = []
+        seen_tags = set()
+        for item in explicit_tags + recommended_tags + inferred_tags:
+            cleaned = str(item or "").strip()[:50]
+            lowered = cleaned.lower()
+            if not cleaned or lowered in seen_tags:
+                continue
+            seen_tags.add(lowered)
+            final_tags.append(cleaned)
 
         parsed = GithubSkillParsedOut(
             title=title,
@@ -572,7 +657,7 @@ class GithubSkillService:
             category=category,
             skill_type=skill_type,
             difficulty=difficulty,
-            tags=tags,
+            tags=final_tags,
             use_cases=final_use_cases,
             prompt_role=prompt_role,
             system_prompt=system_prompt,
@@ -680,6 +765,21 @@ class GithubSkillService:
         item = self._get_import(import_id)
         parsed_repo = item.raw_repo_json or {}
         frontmatter = item.raw_skill_md_frontmatter or {}
+        inferred_use_cases = self._parse_frontmatter_use_cases(frontmatter)
+        if not inferred_use_cases:
+            inference_text = "\n".join(
+                filter(
+                    None,
+                    [
+                        item.parsed_title or "",
+                        item.parsed_summary or "",
+                        item.parsed_description or "",
+                        item.raw_readme_preview or "",
+                        item.raw_skill_md_preview or "",
+                    ],
+                )
+            )
+            inferred_use_cases = self._infer_use_cases(inference_text)
         skill = Skill(
             title=item.parsed_title or parsed_repo.get("name") or item.repo_full_name.split("/")[-1],
             slug=self._build_unique_slug(item.parsed_title or item.repo_full_name.split("/")[-1]),
@@ -709,7 +809,7 @@ class GithubSkillService:
         self.db.flush()
         if category is not None:
             self.db.add(SkillCategoryRelation(skill_id=skill.id, category_id=category.id, is_primary=True))
-        self._ensure_tags(skill.id, item.parsed_tags or [])
+        self._ensure_import_tags(skill.id, item.parsed_tags or [], inferred_use_cases)
         source = self.db.scalar(select(SkillGithubSource).where(SkillGithubSource.repo_full_name == item.repo_full_name))
         if source is None:
             source = SkillGithubSource(
@@ -993,20 +1093,35 @@ class GithubSkillService:
             )
         )
 
-    def _ensure_tags(self, skill_id: UUID, names: List[str]) -> None:
+    def _ensure_tags(self, skill_id: UUID, names: List[str], tag_type: str) -> None:
         for name in names:
             cleaned = (name or "").strip()
             if not cleaned:
                 continue
             slug = re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff]+", "-", cleaned.lower()).strip("-") or cleaned
-            tag = self.db.scalar(select(Tag).where(Tag.slug == slug))
+            tag = self.db.scalar(
+                select(Tag).where(
+                    Tag.slug == slug,
+                    Tag.type == tag_type,
+                    Tag.deleted_at.is_(None),
+                )
+            )
             if tag is None:
-                tag = Tag(name=cleaned, slug=slug, type="type", is_enabled=True)
+                tag = Tag(name=cleaned[:50], slug=slug[:80], type=tag_type, is_enabled=True)
                 self.db.add(tag)
                 self.db.flush()
             exists = self.db.scalar(select(SkillTag).where(SkillTag.skill_id == skill_id, SkillTag.tag_id == tag.id))
             if exists is None:
                 self.db.add(SkillTag(skill_id=skill_id, tag_id=tag.id))
+
+    def _ensure_import_tags(self, skill_id: UUID, names: List[str], use_cases: List[str]) -> None:
+        self._ensure_tags(skill_id, names, "type")
+        scene_names = [
+            USE_CASE_LABELS.get(use_case, use_case)
+            for use_case in (use_cases or [])
+            if str(use_case).strip()
+        ]
+        self._ensure_tags(skill_id, scene_names, "scene")
 
     def _admin_uuid(self, admin: dict) -> Optional[UUID]:
         raw = (admin or {}).get("id")
