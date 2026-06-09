@@ -263,6 +263,60 @@ TAG_KEYWORDS = {
     "供应链": ["supply chain", "供应链"],
     "产业链": ["value chain", "产业链"],
 }
+HIGH_RISK_FINANCE_TAGS = {"投资研究", "股票研究", "市场扫描", "供应链", "产业链"}
+AGENTIC_REPO_KEYWORDS = {
+    "agent",
+    "agents",
+    "multi-agent",
+    "assistant",
+    "copilot",
+    "prompt",
+    "workflow",
+    "skill",
+    "skills",
+    "claude code",
+    "codex",
+    "cursor",
+    "system prompt",
+    "template",
+    "automation",
+}
+FINANCE_STRONG_SIGNAL_KEYWORDS = {
+    "equity research",
+    "financial model",
+    "valuation",
+    "alpha",
+    "portfolio",
+    "hedge fund",
+    "earnings",
+    "securities",
+    "a-share",
+    "stock pitch",
+    "quant",
+    "factor investing",
+    "行业研究",
+    "证券研究",
+    "财务建模",
+    "估值",
+    "基金",
+    "研报",
+    "量化",
+    "投资组合",
+}
+FINANCE_WEAK_SIGNAL_KEYWORDS = {
+    "investment",
+    "stock",
+    "stocks",
+    "supply chain",
+    "value chain",
+    "market scan",
+    "投研",
+    "投资研究",
+    "股票",
+    "供应链",
+    "产业链",
+    "市场扫描",
+}
 NOISY_SECTION_TITLES = {
     "news",
     "tutorial",
@@ -1152,6 +1206,55 @@ class GithubSkillService:
         readme_source = "\n".join(repo.readme_texts or ([repo.readme_text] if repo.readme_text else []))
         return self._infer_tags(readme_source)
 
+    def _has_any_keyword(self, text: str, keywords: Iterable[str]) -> bool:
+        return any(self._contains_keyword(text, keyword) for keyword in keywords)
+
+    def _finance_signal_strength(self, signal_text: str) -> Tuple[int, int]:
+        lowered = signal_text.lower()
+        strong = sum(1 for keyword in FINANCE_STRONG_SIGNAL_KEYWORDS if self._contains_keyword(lowered, keyword))
+        weak = sum(1 for keyword in FINANCE_WEAK_SIGNAL_KEYWORDS if self._contains_keyword(lowered, keyword))
+        return strong, weak
+
+    def _is_agentic_repo_context(
+        self,
+        *,
+        signal_text: str,
+        skill_type: Optional[str],
+        category: Optional[str],
+        use_cases: List[str],
+    ) -> bool:
+        lowered = signal_text.lower()
+        return bool(
+            skill_type in {"agent", "workflow", "prompt"}
+            or category == "engineering"
+            or "development" in use_cases
+            or self._has_any_keyword(lowered, AGENTIC_REPO_KEYWORDS)
+        )
+
+    def _should_keep_finance_tags(
+        self,
+        *,
+        signal_text: str,
+        skill_type: Optional[str],
+        category: Optional[str],
+        use_cases: List[str],
+    ) -> bool:
+        if category != "data-business-analysis" and skill_type in {"agent", "workflow", "prompt"}:
+            return False
+        strong_count, weak_count = self._finance_signal_strength(signal_text)
+        if strong_count >= 2:
+            return True
+        if strong_count >= 1 and weak_count >= 2:
+            return True
+        if not self._is_agentic_repo_context(
+            signal_text=signal_text,
+            skill_type=skill_type,
+            category=category,
+            use_cases=use_cases,
+        ) and (strong_count >= 1 or weak_count >= 3):
+            return True
+        return False
+
     def _filter_tags(
         self,
         tags: List[str],
@@ -1168,8 +1271,16 @@ class GithubSkillService:
             or skill_type == "tool_config"
             or "productivity" in use_cases
         )
+        keep_finance_tags = self._should_keep_finance_tags(
+            signal_text=lowered_signal,
+            skill_type=skill_type,
+            category=category,
+            use_cases=use_cases,
+        )
 
         for tag in tags:
+            if tag in HIGH_RISK_FINANCE_TAGS and not keep_finance_tags:
+                continue
             if is_productivity_tool and tag in {"内容创作", "测试自动化", "视觉设计", "营销推广", "学习研究"}:
                 if tag == "内容创作" and self._contains_keyword(lowered_signal, "content creation"):
                     filtered.append(tag)
@@ -1196,7 +1307,9 @@ class GithubSkillService:
 
     def _recommend_meta(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str], List[str], List[str]]:
         haystack = text.lower()
-        if any(word in haystack for word in ["investment", "equity research", "stock", "stocks", "supply chain", "value chain", "market scan"]):
+        finance_strong, finance_weak = self._finance_signal_strength(haystack)
+        has_agentic_signal = self._has_any_keyword(haystack, AGENTIC_REPO_KEYWORDS)
+        if finance_strong >= 2 or (finance_strong >= 1 and finance_weak >= 2 and not has_agentic_signal):
             return "data-business-analysis", "agent", "advanced", ["投资研究", "股票研究"], ["data_analysis"]
         if any(
             word in haystack
