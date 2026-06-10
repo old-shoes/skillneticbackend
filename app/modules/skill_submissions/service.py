@@ -977,6 +977,7 @@ class SkillSubmissionService:
         original_author = metadata.get("author") if isinstance(metadata, dict) else None
         cleaned_tags = [item.strip() for item in payload.tags if item.strip()]
         normalized_use_cases = self._normalize_use_cases(payload.use_cases or parsed.parsed.use_cases or [])
+        summary = payload.summary.strip()
 
         submission = SkillSubmission(
             submitter_id=submitter_id,
@@ -984,7 +985,7 @@ class SkillSubmissionService:
             source_type="user_github",
             title=payload.title.strip(),
             slug=self._slugify(payload.title),
-            summary=payload.summary.strip(),
+            summary=summary[:160],
             description=(payload.description or parsed.parsed.description or "").strip(),
             github_url=parsed.github_url,
             repo_full_name=parsed.repo_full_name,
