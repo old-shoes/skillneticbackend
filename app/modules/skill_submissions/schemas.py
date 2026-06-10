@@ -92,7 +92,7 @@ class UserGithubSkillParseIn(BaseModel):
 class UserGithubSkillSubmitIn(BaseModel):
     github_url: str
     title: str = Field(min_length=2, max_length=100)
-    summary: str = Field(min_length=10, max_length=160)
+    summary: str = Field(max_length=5000)
     description: str = ""
     category: Optional[str] = None
     skill_type: Optional[SkillType] = None
