@@ -4,8 +4,11 @@ import logging
 import threading
 from datetime import datetime, time, timedelta, timezone
 
+from app.core.database import SessionLocal
 from app.core.config import settings
 from app.modules.community_watch.fetcher import refresh_community_watch_snapshot
+from app.modules.community_watch.schemas import CommunityWatchSnapshot
+from app.modules.newsletter.service import NewsletterService
 
 
 logger = logging.getLogger(__name__)
@@ -32,10 +35,25 @@ def _seconds_until_next_run() -> float:
     return max(60.0, (next_run_local.astimezone(timezone.utc) - now_utc).total_seconds())
 
 
+def _send_digest_safely(snapshot: dict) -> None:
+    if not settings.newsletter_daily_digest_enabled:
+        return
+    db = SessionLocal()
+    try:
+        result = NewsletterService(db).send_daily_digest(CommunityWatchSnapshot.model_validate(snapshot))
+        logger.info("Newsletter digest sent: delivered=%s skipped=%s", result.delivered, result.skipped)
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Failed to send newsletter digest: %s", exc)
+    finally:
+        db.close()
+
+
 def _refresh_safely(reason: str) -> None:
     try:
         logger.info("Refreshing community watch snapshot: %s", reason)
-        refresh_community_watch_snapshot()
+        snapshot = refresh_community_watch_snapshot()
+        if reason == "daily-schedule":
+            _send_digest_safely(snapshot)
     except Exception as exc:  # pragma: no cover
         logger.exception("Failed to refresh community watch snapshot: %s", exc)
 

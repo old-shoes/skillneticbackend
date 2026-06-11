@@ -9,6 +9,7 @@ from app.modules.auth.models import AuthEmailCode, AuthLog, PasswordResetRecord,
 from app.modules.category.models import Category
 from app.modules.homepage.models import HomepageStats
 from app.modules.me.models import HelpPost, UserFavorite, UserNotification, UserPointLog
+from app.modules.newsletter.models import NewsletterSubscriber
 from app.modules.skill.models import Skill, SkillTag, Tag
 from app.modules.track.models import TrackingEvent
 from app.modules.tutorial.models import Tutorial

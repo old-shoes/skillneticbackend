@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     community_watch_issues_limit: int = 8
     community_watch_timeout_seconds: float = 20.0
     community_watch_translate_to_zh: bool = True
+    newsletter_daily_digest_enabled: bool = True
+    newsletter_daily_digest_subject_prefix: str = "Skillnetic"
     test_auth_token: str = "ai-skill-test-token"
     test_auth_email: str = "submit-demo@aiskill.local"
     cors_origins: List[str] = [

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2026-06-11T05:05:55+00:00",
+    "generatedAt": "2026-06-11T07:59:12+00:00",
     "source": "github-community-watch",
     "scriptVersion": 3,
     "trendingFeedUrl": "https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml",
@@ -14,10 +14,10 @@
     "trackedRepositories": 12,
     "trackedIssues": 8,
     "trackedTopics": 10,
-    "totalStars": 648081,
-    "totalForks": 85857,
-    "totalStarsLabel": "648.1k",
-    "totalForksLabel": "85.9k",
+    "totalStars": 649913,
+    "totalForks": 86003,
+    "totalStarsLabel": "649.9k",
+    "totalForksLabel": "86.0k",
     "topLanguage": "Python",
     "topLanguageCount": 5,
     "filters": {
@@ -38,13 +38,13 @@
       "language": "Shell",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 52395,
-      "forks": 5761,
-      "watchers": 52395,
-      "openIssues": 108,
-      "starsLabel": "52.4k",
+      "stars": 52899,
+      "forks": 5805,
+      "watchers": 52899,
+      "openIssues": 109,
+      "starsLabel": "52.9k",
       "forksLabel": "5.8k",
-      "watchersLabel": "52.4k",
+      "watchersLabel": "52.9k",
       "topics": [
         "agent-skills",
         "antigravity",
@@ -54,7 +54,7 @@
         "skills"
       ],
       "homepageUrl": "",
-      "updatedAt": "2026-06-11T05:04:32Z",
+      "updatedAt": "2026-06-11T07:58:07Z",
       "pushedAt": "2026-06-11T01:40:56Z"
     },
     {
@@ -68,13 +68,13 @@
       "language": "",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 15283,
-      "forks": 1642,
-      "watchers": 15283,
-      "openIssues": 21,
-      "starsLabel": "15.3k",
-      "forksLabel": "1.6k",
-      "watchersLabel": "15.3k",
+      "stars": 15583,
+      "forks": 1657,
+      "watchers": 15583,
+      "openIssues": 22,
+      "starsLabel": "15.6k",
+      "forksLabel": "1.7k",
+      "watchersLabel": "15.6k",
       "topics": [
         "agent-skill-repository",
         "agent-skills",
@@ -85,7 +85,7 @@
         "product-management"
       ],
       "homepageUrl": "https://www.productcompass.pm/p/pm-skills-2-red-team-ship",
-      "updatedAt": "2026-06-11T05:05:08Z",
+      "updatedAt": "2026-06-11T07:57:40Z",
       "pushedAt": "2026-06-06T14:12:26Z"
     },
     {
@@ -99,16 +99,16 @@
       "language": "TypeScript",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 15043,
-      "forks": 1038,
-      "watchers": 15043,
-      "openIssues": 40,
-      "starsLabel": "15.0k",
+      "stars": 15125,
+      "forks": 1044,
+      "watchers": 15125,
+      "openIssues": 41,
+      "starsLabel": "15.1k",
       "forksLabel": "1.0k",
-      "watchersLabel": "15.0k",
+      "watchersLabel": "15.1k",
       "topics": [],
       "homepageUrl": "https://tolaria.md",
-      "updatedAt": "2026-06-11T05:02:00Z",
+      "updatedAt": "2026-06-11T07:54:21Z",
       "pushedAt": "2026-06-11T04:09:58Z"
     },
     {
@@ -122,13 +122,13 @@
       "language": "Python",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 39249,
-      "forks": 3164,
-      "watchers": 39249,
-      "openIssues": 147,
-      "starsLabel": "39.2k",
+      "stars": 39362,
+      "forks": 3171,
+      "watchers": 39362,
+      "openIssues": 150,
+      "starsLabel": "39.4k",
       "forksLabel": "3.2k",
-      "watchersLabel": "39.2k",
+      "watchersLabel": "39.4k",
       "topics": [
         "ai-prompts",
         "ai-skill",
@@ -140,7 +140,7 @@
         "hackernews"
       ],
       "homepageUrl": null,
-      "updatedAt": "2026-06-11T05:03:51Z",
+      "updatedAt": "2026-06-11T07:54:45Z",
       "pushedAt": "2026-06-10T00:33:31Z"
     },
     {
@@ -154,13 +154,13 @@
       "language": "Python",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 32142,
-      "forks": 2358,
-      "watchers": 32142,
-      "openIssues": 45,
-      "starsLabel": "32.1k",
+      "stars": 32235,
+      "forks": 2370,
+      "watchers": 32235,
+      "openIssues": 47,
+      "starsLabel": "32.2k",
       "forksLabel": "2.4k",
-      "watchersLabel": "32.1k",
+      "watchersLabel": "32.2k",
       "topics": [
         "cli",
         "cybersecurity",
@@ -172,7 +172,7 @@
         "osint"
       ],
       "homepageUrl": "https://maigret.app",
-      "updatedAt": "2026-06-11T05:03:46Z",
+      "updatedAt": "2026-06-11T07:58:32Z",
       "pushedAt": "2026-06-10T18:05:19Z"
     },
     {
@@ -186,13 +186,13 @@
       "language": "",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 139603,
-      "forks": 34597,
-      "watchers": 139603,
-      "openIssues": 150,
-      "starsLabel": "139.6k",
+      "stars": 139656,
+      "forks": 34602,
+      "watchers": 139656,
+      "openIssues": 151,
+      "starsLabel": "139.7k",
       "forksLabel": "34.6k",
-      "watchersLabel": "139.6k",
+      "watchersLabel": "139.7k",
       "topics": [
         "ai",
         "bolt",
@@ -204,7 +204,7 @@
         "github-copilot"
       ],
       "homepageUrl": "",
-      "updatedAt": "2026-06-11T05:02:54Z",
+      "updatedAt": "2026-06-11T07:57:50Z",
       "pushedAt": "2026-06-09T09:30:13Z"
     },
     {
@@ -218,17 +218,17 @@
       "language": "Shell",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 223826,
-      "forks": 19902,
-      "watchers": 223826,
-      "openIssues": 285,
-      "starsLabel": "223.8k",
+      "stars": 224054,
+      "forks": 19922,
+      "watchers": 224054,
+      "openIssues": 286,
+      "starsLabel": "224.1k",
       "forksLabel": "19.9k",
-      "watchersLabel": "223.8k",
+      "watchersLabel": "224.1k",
       "topics": [],
       "homepageUrl": "",
-      "updatedAt": "2026-06-11T05:05:09Z",
-      "pushedAt": "2026-06-11T03:35:43Z"
+      "updatedAt": "2026-06-11T07:57:54Z",
+      "pushedAt": "2026-06-11T07:36:43Z"
     },
     {
       "title": "masterking32/MasterDnsVPN",
@@ -241,13 +241,13 @@
       "language": "Go",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 5315,
-      "forks": 500,
-      "watchers": 5315,
-      "openIssues": 16,
-      "starsLabel": "5.3k",
-      "forksLabel": "500",
-      "watchersLabel": "5.3k",
+      "stars": 5394,
+      "forks": 503,
+      "watchers": 5394,
+      "openIssues": 17,
+      "starsLabel": "5.4k",
+      "forksLabel": "503",
+      "watchersLabel": "5.4k",
       "topics": [
         "dns",
         "dns-client",
@@ -259,7 +259,7 @@
         "masterdns"
       ],
       "homepageUrl": "https://t.me/masterdnsvpn",
-      "updatedAt": "2026-06-11T05:02:19Z",
+      "updatedAt": "2026-06-11T07:58:10Z",
       "pushedAt": "2026-06-09T05:06:34Z"
     },
     {
@@ -273,13 +273,13 @@
       "language": "Python",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 85291,
-      "forks": 12176,
-      "watchers": 85291,
-      "openIssues": 33,
-      "starsLabel": "85.3k",
+      "stars": 85480,
+      "forks": 12196,
+      "watchers": 85480,
+      "openIssues": 31,
+      "starsLabel": "85.5k",
       "forksLabel": "12.2k",
-      "watchersLabel": "85.3k",
+      "watchersLabel": "85.5k",
       "topics": [
         "ai",
         "automation",
@@ -290,8 +290,8 @@
         "tiktok"
       ],
       "homepageUrl": "",
-      "updatedAt": "2026-06-11T05:03:19Z",
-      "pushedAt": "2026-06-10T09:39:33Z"
+      "updatedAt": "2026-06-11T07:56:08Z",
+      "pushedAt": "2026-06-11T07:12:27Z"
     },
     {
       "title": "maziyarpanahi/openmed",
@@ -304,12 +304,12 @@
       "language": "Python",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 2384,
-      "forks": 247,
-      "watchers": 2384,
+      "stars": 2439,
+      "forks": 251,
+      "watchers": 2439,
       "openIssues": 74,
       "starsLabel": "2.4k",
-      "forksLabel": "247",
+      "forksLabel": "251",
       "watchersLabel": "2.4k",
       "topics": [
         "bert",
@@ -322,8 +322,8 @@
         "on-device"
       ],
       "homepageUrl": "https://openmed.life/",
-      "updatedAt": "2026-06-11T05:00:03Z",
-      "pushedAt": "2026-06-10T22:05:43Z"
+      "updatedAt": "2026-06-11T07:55:25Z",
+      "pushedAt": "2026-06-11T07:57:17Z"
     },
     {
       "title": "luongnv89/claude-howto",
@@ -336,20 +336,20 @@
       "language": "Python",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 36630,
-      "forks": 4421,
-      "watchers": 36630,
+      "stars": 36714,
+      "forks": 4427,
+      "watchers": 36714,
       "openIssues": 36,
-      "starsLabel": "36.6k",
+      "starsLabel": "36.7k",
       "forksLabel": "4.4k",
-      "watchersLabel": "36.6k",
+      "watchersLabel": "36.7k",
       "topics": [
         "claude-code",
         "guide",
         "tutorial"
       ],
       "homepageUrl": "http://luongnv.com/claude-howto/",
-      "updatedAt": "2026-06-11T04:59:10Z",
+      "updatedAt": "2026-06-11T07:58:38Z",
       "pushedAt": "2026-06-10T06:19:16Z"
     },
     {
@@ -363,13 +363,13 @@
       "language": "TypeScript",
       "publishedAt": "",
       "source": "github-trending-rss",
-      "stars": 920,
-      "forks": 51,
-      "watchers": 920,
-      "openIssues": 36,
-      "starsLabel": "920",
-      "forksLabel": "51",
-      "watchersLabel": "920",
+      "stars": 972,
+      "forks": 55,
+      "watchers": 972,
+      "openIssues": 37,
+      "starsLabel": "972",
+      "forksLabel": "55",
+      "watchersLabel": "972",
       "topics": [
         "ai",
         "ai-agents",
@@ -381,7 +381,7 @@
         "claude-agents"
       ],
       "homepageUrl": "https://deeplake.ai/hivemind",
-      "updatedAt": "2026-06-11T04:48:20Z",
+      "updatedAt": "2026-06-11T07:57:56Z",
       "pushedAt": "2026-06-11T04:48:24Z"
     }
   ],
@@ -507,8 +507,8 @@
   "topics": [
     {
       "name": "claude-code",
-      "repoCount": 35524,
-      "repoCountLabel": "35.5k",
+      "repoCount": 35572,
+      "repoCountLabel": "35.6k",
       "sampleRepo": "affaan-m/ECC",
       "sampleRepoUrl": "https://github.com/affaan-m/ECC",
       "sampleRepoDescription": "The agent harness performance optimization system. Skills, instincts, memory, security, and research-first development for Claude Code, Codex, Opencode, Cursor and beyond.",
@@ -516,8 +516,8 @@
     },
     {
       "name": "ai",
-      "repoCount": 135216,
-      "repoCountLabel": "135.2k",
+      "repoCount": 135312,
+      "repoCountLabel": "135.3k",
       "sampleRepo": "openclaw/openclaw",
       "sampleRepoUrl": "https://github.com/openclaw/openclaw",
       "sampleRepoDescription": "Your own personal AI assistant. Any OS. Any Platform. The lobster way. 🦞 ",
@@ -525,7 +525,7 @@
     },
     {
       "name": "agent-skills",
-      "repoCount": 6565,
+      "repoCount": 6580,
       "repoCountLabel": "6.6k",
       "sampleRepo": "anthropics/skills",
       "sampleRepoUrl": "https://github.com/anthropics/skills",
@@ -534,7 +534,7 @@
     },
     {
       "name": "cursor",
-      "repoCount": 8497,
+      "repoCount": 8503,
       "repoCountLabel": "8.5k",
       "sampleRepo": "x1xhlol/system-prompts-and-models-of-ai-tools",
       "sampleRepoUrl": "https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools",
@@ -543,7 +543,7 @@
     },
     {
       "name": "claude",
-      "repoCount": 28176,
+      "repoCount": 28215,
       "repoCountLabel": "28.2k",
       "sampleRepo": "affaan-m/ECC",
       "sampleRepoUrl": "https://github.com/affaan-m/ECC",
@@ -570,7 +570,7 @@
     },
     {
       "name": "skills",
-      "repoCount": 8186,
+      "repoCount": 8192,
       "repoCountLabel": "8.2k",
       "sampleRepo": "Snailclimb/JavaGuide",
       "sampleRepoUrl": "https://github.com/Snailclimb/JavaGuide",

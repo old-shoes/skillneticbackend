@@ -22,6 +22,7 @@ from app.modules.community_watch.scheduler import start_community_watch_schedule
 from app.modules.github_skills.router import router as github_skills_router
 from app.modules.homepage.router import router as homepage_router
 from app.modules.me.router import router as me_router
+from app.modules.newsletter.router import router as newsletter_router
 from app.modules.skills.router import router as skills_router
 from app.modules.skill_submissions.router import admin_router as admin_skill_submissions_router
 from app.modules.skill_submissions.router import user_router as skill_submissions_router
@@ -50,6 +51,7 @@ app.include_router(tutorials_router, prefix="/api/v1")
 app.include_router(track_router, prefix="/api/v1")
 app.include_router(upload_router, prefix="/api/v1")
 app.include_router(community_watch_router, prefix="/api/v1")
+app.include_router(newsletter_router, prefix="/api/v1")
 app.include_router(admin_auth_router, prefix="/api/admin/v1/auth")
 app.include_router(admin_current_user_router, prefix="/api/admin/v1")
 app.include_router(admin_dashboard_router, prefix="/api/admin/v1/dashboard")
