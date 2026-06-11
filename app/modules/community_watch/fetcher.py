@@ -16,13 +16,29 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import certifi
+from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.modules.github_skills.models import SkillGithubSource
+from app.modules.skill.models import Skill
 
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TOPICS = ["ai", "agent", "llm", "rag", "copilot", "workflow-automation"]
+AI_RELATED_KEYWORDS = [
+    "ai",
+    "llm",
+    "agent",
+    "agents",
+    "rag",
+    "gpt",
+    "openai",
+    "anthropic",
+    "copilot",
+    "chatbot",
+]
 TRENDING_FEED_URL = "https://github.com/trending"
 GITHUB_API_BASE = "https://api.github.com"
 DEEPL_DEFAULT_BASE_URL = "https://api-free.deepl.com/v2/translate"
@@ -288,10 +304,127 @@ def build_repo_url(full_name: str) -> str:
     return f"{GITHUB_API_BASE}/repos/{full_name}"
 
 
+def get_existing_skill_repo_names() -> set[str]:
+    db = SessionLocal()
+    try:
+        names = set()
+        github_source_names = db.scalars(select(SkillGithubSource.repo_full_name)).all()
+        names.update(str(name).strip().lower() for name in github_source_names if str(name).strip())
+
+        skill_source_names = db.scalars(
+            select(Skill.source_name).where(
+                Skill.deleted_at.is_(None),
+                Skill.source_type.in_(("github", "user_github")),
+                Skill.source_name.is_not(None),
+            )
+        ).all()
+        names.update(str(name).strip().lower() for name in skill_source_names if str(name).strip())
+        return names
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Failed to load existing skill repo names: %s", exc)
+        return set()
+    finally:
+        db.close()
+
+
+def normalize_topic_keywords(topic: Optional[str]) -> List[str]:
+    value = (topic or "").strip().lower()
+    if not value:
+        return []
+    if value == "ai":
+        return AI_RELATED_KEYWORDS
+    return [value]
+
+
+def repository_matches_topic(repository: Dict[str, Any], topic: Optional[str]) -> bool:
+    keywords = normalize_topic_keywords(topic)
+    if not keywords:
+        return True
+
+    haystacks = [
+        str(repository.get("fullName", "")).lower(),
+        str(repository.get("title", "")).lower(),
+        str(repository.get("description", "")).lower(),
+        str(repository.get("descriptionZh", "")).lower(),
+        str(repository.get("language", "")).lower(),
+    ]
+    haystacks.extend(str(topic_name).lower() for topic_name in repository.get("topics", []))
+    merged = " ".join(haystacks)
+    return any(keyword in merged for keyword in keywords)
+
+
+def map_search_repository_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    stars = safe_int(item.get("stargazers_count"))
+    forks = safe_int(item.get("forks_count"))
+    watchers = safe_int(item.get("watchers_count"))
+    open_issues = safe_int(item.get("open_issues_count"))
+    return {
+        "title": item.get("full_name", ""),
+        "fullName": item.get("full_name", ""),
+        "owner": ((item.get("owner") or {}).get("login", "") if isinstance(item.get("owner"), dict) else ""),
+        "repo": item.get("name", ""),
+        "url": item.get("html_url", ""),
+        "description": item.get("description", "") or "",
+        "descriptionZh": "",
+        "language": item.get("language") or "",
+        "publishedAt": "",
+        "source": "github-search",
+        "stars": stars,
+        "forks": forks,
+        "watchers": watchers,
+        "openIssues": open_issues,
+        "starsLabel": compact_number(stars),
+        "forksLabel": compact_number(forks),
+        "watchersLabel": compact_number(watchers),
+        "topics": (item.get("topics") or [])[:8] if isinstance(item.get("topics"), list) else [],
+        "homepageUrl": item.get("homepage") or "",
+        "updatedAt": item.get("updated_at") or "",
+        "pushedAt": item.get("pushed_at") or "",
+    }
+
+
+def fetch_topic_search_repositories(
+    config: FetchConfig,
+    *,
+    exclude_names: List[str],
+    required_count: int,
+) -> List[Dict[str, Any]]:
+    topic = (config.topic or "").strip().lower()
+    if not topic or required_count <= 0:
+        return []
+
+    query_parts = [f"topic:{topic}", "stars:>50", "archived:false"]
+    payload = request_json(
+        build_search_url(" ".join(query_parts), "updated", "desc", max(required_count * 3, 20)),
+        timeout=config.timeout,
+        token=config.github_token,
+    )
+    rows: List[Dict[str, Any]] = []
+    seen = set(exclude_names)
+
+    for item in payload.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        full_name = str(item.get("full_name", "")).strip()
+        if not full_name or full_name in seen:
+            continue
+        mapped = map_search_repository_item(item)
+        if not repository_matches_topic(mapped, config.topic):
+            continue
+        rows.append(mapped)
+        seen.add(full_name)
+        if len(rows) >= required_count:
+            break
+    return rows
+
+
 def enrich_repositories(config: FetchConfig, trending_repos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    existing_skill_repo_names = get_existing_skill_repo_names()
     enriched: List[Dict[str, Any]] = []
 
     for item in trending_repos:
+        if str(item.get("fullName", "")).strip().lower() in existing_skill_repo_names:
+            continue
         api_item: Dict[str, Any] = {}
         if item["fullName"]:
             try:
@@ -336,6 +469,23 @@ def enrich_repositories(config: FetchConfig, trending_repos: List[Dict[str, Any]
     translations = translate_texts_to_zh([repo["description"] for repo in enriched], config)
     for repo in enriched:
         repo["descriptionZh"] = translations.get(repo["description"], "")
+
+    if config.topic:
+        filtered = [repo for repo in enriched if repository_matches_topic(repo, config.topic)]
+        if len(filtered) < config.limit:
+            filtered.extend(
+                fetch_topic_search_repositories(
+                    config,
+                    exclude_names=[repo["fullName"] for repo in filtered] + list(existing_skill_repo_names),
+                    required_count=config.limit - len(filtered),
+                )
+            )
+            extra_translations = translate_texts_to_zh([repo["description"] for repo in filtered], config)
+            for repo in filtered:
+                if not repo.get("descriptionZh"):
+                    repo["descriptionZh"] = extra_translations.get(repo["description"], "")
+        return filtered[: config.limit]
+
     return enriched
 
 

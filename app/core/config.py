@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     community_watch_timezone_offset_hours: int = 8
     community_watch_since: str = "daily"
     community_watch_language: str = ""
-    community_watch_topic: str = ""
+    community_watch_topic: str = "ai"
     community_watch_limit: int = 12
     community_watch_topics_limit: int = 10
     community_watch_issues_limit: int = 8
