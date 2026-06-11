@@ -376,7 +376,20 @@ class SkillSubmissionService:
             index += 1
         return current
 
-    def _ensure_skill_tags(self, skill_id: UUID, names: List[str], tag_type: str) -> None:
+    def _ensure_skill_tags(
+        self,
+        skill_id: UUID,
+        names: List[str],
+        tag_type: str,
+        attached_tag_ids: Optional[set[UUID]] = None,
+    ) -> set[UUID]:
+        if attached_tag_ids is None:
+            attached_tag_ids = {
+                item[0]
+                for item in self.db.execute(
+                    select(SkillTag.tag_id).where(SkillTag.skill_id == skill_id)
+                ).all()
+            }
         for name in names:
             cleaned = (name or "").strip()
             if not cleaned:
@@ -385,7 +398,6 @@ class SkillSubmissionService:
             tag = self.db.scalar(
                 select(Tag).where(
                     Tag.slug == slug,
-                    Tag.type == tag_type,
                     Tag.deleted_at.is_(None),
                 )
             )
@@ -393,24 +405,21 @@ class SkillSubmissionService:
                 tag = Tag(name=cleaned[:50], slug=slug, type=tag_type, is_enabled=True)
                 self.db.add(tag)
                 self.db.flush()
-            exists = self.db.scalar(
-                select(SkillTag).where(
-                    SkillTag.skill_id == skill_id,
-                    SkillTag.tag_id == tag.id,
-                )
-            )
-            if exists is None:
+            if tag.id not in attached_tag_ids:
                 self.db.add(SkillTag(skill_id=skill_id, tag_id=tag.id))
+                attached_tag_ids.add(tag.id)
+        return attached_tag_ids
 
     def _sync_submission_skill_tags(self, submission: SkillSubmission, skill: Skill) -> None:
         self.db.execute(delete(SkillTag).where(SkillTag.skill_id == skill.id))
-        self._ensure_skill_tags(skill.id, list(submission.tags or []), "type")
+        attached_tag_ids: set[UUID] = set()
+        attached_tag_ids = self._ensure_skill_tags(skill.id, list(submission.tags or []), "type", attached_tag_ids)
         scene_names = [
             next((item["label"] for item in USE_CASE_OPTIONS if item["value"] == use_case), use_case)
             for use_case in (submission.use_cases or [])
             if str(use_case).strip()
         ]
-        self._ensure_skill_tags(skill.id, scene_names, "scene")
+        self._ensure_skill_tags(skill.id, scene_names, "scene", attached_tag_ids)
 
     def _submission_to_category(self, submission: SkillSubmission) -> Optional[SubmissionCategoryOut]:
         if not submission.category_id or not submission.category_name:
@@ -653,10 +662,11 @@ class SkillSubmissionService:
         if len(use_cases) < 1:
             required_errors.append("useCases")
 
-        if not system_prompt:
-            required_errors.append("systemPrompt")
-        elif len(system_prompt) < 20 or len(system_prompt) > 50000:
-            required_errors.append("systemPrompt")
+        if not is_github_submission:
+            if not system_prompt:
+                required_errors.append("systemPrompt")
+            elif len(system_prompt) < 20 or len(system_prompt) > 50000:
+                required_errors.append("systemPrompt")
 
         if not prompt_role:
             required_errors.append("promptRole")

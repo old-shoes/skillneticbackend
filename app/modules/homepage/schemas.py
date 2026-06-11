@@ -41,8 +41,7 @@ class TutorialItemOut(BaseModel):
     slug: str
     summary: str
     coverImage: Optional[str] = None
-    chapterCount: int
-    durationMinutes: int
+    readTimeMinutes: int
 
 
 class HomepageStatsOut(BaseModel):

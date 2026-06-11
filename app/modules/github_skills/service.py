@@ -520,10 +520,18 @@ class GithubSkillService:
         if base == "readme":
             if lowered == "readme_cn.md":
                 return (0, 0, normalized)
-            if lowered == "readme.zh-cn.md":
+            if lowered == "readme_zh.md":
                 return (0, 1, normalized)
+            if lowered == "readme.zh.md":
+                return (0, 2, normalized)
+            if lowered == "readme_zh-cn.md":
+                return (0, 3, normalized)
+            if lowered == "readme.zh-cn.md":
+                return (0, 4, normalized)
             if lowered == "readme.md":
                 return (1, 0, normalized)
+            if re.match(r"^readme(?:[._-](?:cn|zh|zh[-_]?cn))\.md$", lowered):
+                return (1, 1, normalized)
         if lowered == f"{base}.zh-cn.md":
             return (2, 0, normalized)
         if re.match(rf"^{re.escape(base)}\.zh(?:[-_].+)?\.md$", lowered):
@@ -560,7 +568,14 @@ class GithubSkillService:
         return self._contents_api(parsed, f"{base_name}.md")
 
     def _preferred_readme(self, parsed: ParsedGithubUrl) -> Optional[Dict[str, Any]]:
-        for candidate in ("README_CN.md", "README.zh-CN.md", "README.md"):
+        for candidate in (
+            "README_CN.md",
+            "README_zh.md",
+            "README.zh.md",
+            "README_zh-CN.md",
+            "README.zh-CN.md",
+            "README.md",
+        ):
             exact_readme = self._contents_api(parsed, candidate)
             if exact_readme:
                 return exact_readme
@@ -1537,6 +1552,15 @@ class GithubSkillService:
     def create_import_draft(self, payload: GithubSkillImportCreateIn, admin: dict) -> GithubSkillImportCreateOut:
         parsed, preview = self._build_parse_result(payload.github_url)
         duplicate_skill_id = self.db.scalar(select(Skill.id).where(Skill.source_name == parsed.repo_full_name, Skill.deleted_at.is_(None)))
+        stale_imports = self.db.scalars(
+            select(GithubSkillImport).where(
+                GithubSkillImport.repo_full_name == parsed.repo_full_name,
+                GithubSkillImport.import_status.in_(("parsed", "pending_review", "approved")),
+            )
+        ).all()
+        for stale in stale_imports:
+            self.db.delete(stale)
+        self.db.flush()
         item = GithubSkillImport(
             repo_full_name=parsed.repo_full_name,
             github_url=parsed.github_url,
@@ -1766,6 +1790,16 @@ class GithubSkillService:
                         )
                     )
                     continue
+
+                stale_imports = self.db.scalars(
+                    select(GithubSkillImport).where(
+                        GithubSkillImport.repo_full_name == parsed.repo_full_name,
+                        GithubSkillImport.import_status.in_(("parsed", "pending_review", "approved")),
+                    )
+                ).all()
+                for stale in stale_imports:
+                    self.db.delete(stale)
+                self.db.flush()
 
                 if payload.mode == "parse_only":
                     success_count += 1

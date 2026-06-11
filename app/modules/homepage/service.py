@@ -135,8 +135,9 @@ def _map_tags_by_skill(db: Session, skill_ids: List[UUID]) -> Dict[UUID, List[Sk
 
     result: Dict[UUID, List[SkillTagOut]] = {}
     for skill_id, tag in rows:
+        tag_type = tag.type if tag.type in {"model", "scene", "difficulty", "type"} else "type"
         result.setdefault(skill_id, []).append(
-            SkillTagOut(id=str(tag.id), name=tag.name, type=tag.type)
+            SkillTagOut(id=str(tag.id), name=tag.name, type=tag_type)
         )
     return result
 
@@ -181,8 +182,7 @@ def _map_tutorials(rows: List[Tutorial]) -> List[TutorialItemOut]:
             slug=row.slug,
             summary=row.summary,
             coverImage=row.cover_image,
-            chapterCount=0,
-            durationMinutes=row.read_time_minutes,
+            readTimeMinutes=row.read_time_minutes,
         )
         for row in rows
     ]
