@@ -17,6 +17,8 @@ from app.modules.auth.router import router as auth_router
 from app.modules.admin_tutorials.router import router as admin_tutorials_router
 from app.modules.admin_users.router import router as admin_users_router
 from app.modules.categories.router import router as categories_router
+from app.modules.community_watch.router import router as community_watch_router
+from app.modules.community_watch.scheduler import start_community_watch_scheduler, stop_community_watch_scheduler
 from app.modules.github_skills.router import router as github_skills_router
 from app.modules.homepage.router import router as homepage_router
 from app.modules.me.router import router as me_router
@@ -47,6 +49,7 @@ app.include_router(skill_submissions_router, prefix="/api/v1")
 app.include_router(tutorials_router, prefix="/api/v1")
 app.include_router(track_router, prefix="/api/v1")
 app.include_router(upload_router, prefix="/api/v1")
+app.include_router(community_watch_router, prefix="/api/v1")
 app.include_router(admin_auth_router, prefix="/api/admin/v1/auth")
 app.include_router(admin_current_user_router, prefix="/api/admin/v1")
 app.include_router(admin_dashboard_router, prefix="/api/admin/v1/dashboard")
@@ -72,6 +75,12 @@ def ensure_default_admin() -> None:
         AdminAuthService(db).ensure_default_super_admin()
     finally:
         db.close()
+    start_community_watch_scheduler()
+
+
+@app.on_event("shutdown")
+def stop_background_jobs() -> None:
+    stop_community_watch_scheduler()
 
 
 @app.get("/health")

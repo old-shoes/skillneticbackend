@@ -1,0 +1,1 @@
+"""GitHub community watch module."""
