@@ -66,6 +66,10 @@ class SkillListItemOut(BaseModel):
     sourceName: Optional[str] = None
     originalAuthor: Optional[str] = None
     license: Optional[str] = None
+    runtimeLabels: List[str] = Field(default_factory=list)
+    primaryRuntime: Optional[str] = None
+    inferredSubtype: Optional[str] = None
+    inferredLanguage: Optional[str] = None
     isFavorited: bool = False
 
 
@@ -113,6 +117,10 @@ class SkillDetailOut(BaseModel):
     sourceName: Optional[str] = None
     originalAuthor: Optional[str] = None
     license: Optional[str] = None
+    runtimeLabels: List[str] = Field(default_factory=list)
+    primaryRuntime: Optional[str] = None
+    inferredSubtype: Optional[str] = None
+    inferredLanguage: Optional[str] = None
     isFavorited: bool = False
 
 
@@ -127,6 +135,22 @@ class SkillFiltersOut(BaseModel):
     categoryTree: List[CategoryTreeOut]
     scenes: List[FilterOptionOut]
     types: List[FilterOptionOut]
+    runtimes: List[FilterOptionOut] = Field(default_factory=list)
+    languages: List[FilterOptionOut] = Field(default_factory=list)
+    dashboard: "SkillDashboardOut"
+
+
+class SkillDashboardMetricOut(BaseModel):
+    label: str
+    value: str
+    count: int = 0
+
+
+class SkillDashboardOut(BaseModel):
+    total: int = 0
+    featuredTypes: List[SkillDashboardMetricOut] = Field(default_factory=list)
+    hotScenes: List[SkillDashboardMetricOut] = Field(default_factory=list)
+    topTools: List[SkillDashboardMetricOut] = Field(default_factory=list)
 
 
 class SkillFavoriteOut(BaseModel):

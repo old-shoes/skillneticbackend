@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 from uuid import UUID
 
@@ -14,6 +15,8 @@ from app.modules.skills.schemas import (
     CategoryTreeOut,
     FilterOptionOut,
     PaginationOut,
+    SkillDashboardMetricOut,
+    SkillDashboardOut,
     SkillDetailOut,
     SkillFavoriteOut,
     SkillFiltersOut,
@@ -25,12 +28,34 @@ from app.modules.skills.schemas import (
 
 
 TYPE_OPTIONS = [
-    FilterOptionOut(label="提示词", value="prompt", count=0),
-    FilterOptionOut(label="工作流", value="workflow", count=0),
-    FilterOptionOut(label="教程", value="tutorial", count=0),
-    FilterOptionOut(label="工具配置", value="tool_config", count=0),
-    FilterOptionOut(label="Agent", value="agent", count=0),
+    ("提示词", "prompt"),
+    ("工作流", "workflow"),
+    ("教程", "tutorial"),
+    ("工具配置", "tool_config"),
+    ("Agent", "agent"),
 ]
+
+FEATURED_TYPE_RULES = [
+    ("Claude Skill", "claude-skill", ["claude"]),
+    ("Codex Skill", "codex-skill", ["codex"]),
+    ("OpenClaw Skill", "openclaw-skill", ["openclaw"]),
+    ("通用 Skill", "general-skill", []),
+    ("Skill 套件", "skill-suite", ["suite", "套件", "skills"]),
+]
+
+TOOL_RULES = [
+    ("Claude Code", "claude-code", ["claude code", "claude"]),
+    ("OpenClaw", "openclaw", ["openclaw"]),
+    ("Codex", "codex", ["codex"]),
+    ("Goose", "goose", ["goose"]),
+    ("Cursor", "cursor", ["cursor"]),
+    ("Hermes", "hermes", ["hermes"]),
+    ("AutoGPT", "autogpt", ["autogpt"]),
+    ("Gemini CLI", "gemini-cli", ["gemini cli", "gemini"]),
+    ("MCP Client", "mcp-client", ["mcp client", "mcp"]),
+]
+
+SUPPORTED_TAG_TYPES = {"scene", "difficulty", "type"}
 
 
 class SkillService:
@@ -160,6 +185,238 @@ class SkillService:
             .order_by(Category.sort_order.asc(), Category.created_at.asc())
         ).all()
 
+    def _published_skill_count_by_category_slug(self, *, level: Optional[int] = None) -> Dict[str, int]:
+        rows = self.db.execute(
+            select(Category.slug, func.count(func.distinct(SkillCategoryRelation.skill_id)))
+            .select_from(Category)
+            .join(SkillCategoryRelation, SkillCategoryRelation.category_id == Category.id, isouter=True)
+            .join(Skill, Skill.id == SkillCategoryRelation.skill_id, isouter=True)
+            .where(
+                Category.deleted_at.is_(None),
+                Category.is_enabled.is_(True),
+                Skill.status == "published",
+                Skill.deleted_at.is_(None),
+            )
+            .where(Category.level == level if level is not None else True)
+            .group_by(Category.slug)
+        ).all()
+        return {slug: int(total or 0) for slug, total in rows}
+
+    def _published_skill_count_by_tag_slug(self, *, tag_type: str) -> Dict[str, int]:
+        rows = self.db.execute(
+            select(Tag.slug, func.count(func.distinct(SkillTag.skill_id)))
+            .select_from(Tag)
+            .join(SkillTag, SkillTag.tag_id == Tag.id, isouter=True)
+            .join(Skill, Skill.id == SkillTag.skill_id, isouter=True)
+            .where(
+                Tag.type == tag_type,
+                Tag.deleted_at.is_(None),
+                Tag.is_enabled.is_(True),
+                Skill.status == "published",
+                Skill.deleted_at.is_(None),
+            )
+            .group_by(Tag.slug)
+        ).all()
+        return {slug: int(total or 0) for slug, total in rows}
+
+    @staticmethod
+    def _normalize_text(value: Optional[str]) -> str:
+        return (value or "").lower().replace(" ", "").replace("-", "").replace("_", "")
+
+    def _matches_any(self, source: str, hints: Sequence[str]) -> bool:
+        normalized_source = self._normalize_text(source)
+        return any(self._normalize_text(hint) in normalized_source for hint in hints)
+
+    @staticmethod
+    def _contains_chinese(value: str) -> bool:
+        return bool(re.search(r"[\u3400-\u9fff]", value or ""))
+
+    def _infer_runtimes(
+        self,
+        *,
+        title: str,
+        summary: str,
+        source_name: Optional[str],
+        source_url: Optional[str],
+        original_author: Optional[str],
+        recommended_models: Sequence[str],
+        tags: Sequence[TagOut],
+        skill_type: str,
+    ) -> List[str]:
+        source = " ".join(
+            [
+                title or "",
+                summary or "",
+                source_name or "",
+                source_url or "",
+                original_author or "",
+                " ".join(recommended_models or []),
+                " ".join(tag.name for tag in tags),
+            ]
+        )
+        runtimes = [label for label, _, hints in TOOL_RULES if self._matches_any(source, hints)]
+        if runtimes:
+            return runtimes
+        if skill_type == "agent":
+            return ["OpenClaw"]
+        if skill_type == "tool_config":
+            return ["Codex"]
+        if skill_type == "prompt":
+            return ["Claude Code"]
+        return ["MCP Client"]
+
+    def _infer_language(self, *, title: str, summary: str) -> str:
+        source = f"{title or ''} {summary or ''}"
+        has_zh = self._contains_chinese(source)
+        has_en = bool(re.search(r"[a-zA-Z]", source))
+        if has_zh and has_en:
+            return "multi"
+        if has_zh:
+            return "zh"
+        return "en"
+
+    def _infer_subtype(self, *, title: str, summary: str, runtimes: Sequence[str], skill_type: str) -> str:
+        source = f"{title or ''} {summary or ''}"
+        if skill_type != "tool_config" and "skill" not in source.lower():
+            return "general-skill"
+        if re.search(r"suite|套件|skills$", title or "", re.IGNORECASE):
+            return "skill-suite"
+        if "Claude Code" in runtimes:
+            return "claude-skill"
+        if "Codex" in runtimes:
+            return "codex-skill"
+        if "OpenClaw" in runtimes:
+            return "openclaw-skill"
+        return "general-skill"
+
+    def _build_runtime_filters(self) -> List[FilterOptionOut]:
+        rows = self.db.execute(
+            select(Skill.title, Skill.summary, Skill.type, Skill.recommended_models, Skill.source_name, Skill.source_url, Skill.original_author)
+            .join(Category, Skill.category_id == Category.id)
+            .where(
+                Skill.status == "published",
+                Skill.deleted_at.is_(None),
+                Category.deleted_at.is_(None),
+                Category.is_enabled.is_(True),
+            )
+        ).all()
+        counts: Dict[str, int] = {}
+        for title, summary, skill_type, recommended_models, source_name, source_url, original_author in rows:
+            runtimes = self._infer_runtimes(
+                title=title,
+                summary=summary,
+                source_name=source_name,
+                source_url=source_url,
+                original_author=original_author,
+                recommended_models=recommended_models or [],
+                tags=[],
+                skill_type=skill_type,
+            )
+            for runtime in runtimes:
+                counts[runtime] = counts.get(runtime, 0) + 1
+        return [FilterOptionOut(label=label, value=label, count=counts.get(label, 0)) for label, _, _ in TOOL_RULES if counts.get(label, 0) > 0]
+
+    def _build_language_filters(self) -> List[FilterOptionOut]:
+        rows = self.db.execute(
+            select(Skill.title, Skill.summary)
+            .join(Category, Skill.category_id == Category.id)
+            .where(
+                Skill.status == "published",
+                Skill.deleted_at.is_(None),
+                Category.deleted_at.is_(None),
+                Category.is_enabled.is_(True),
+            )
+        ).all()
+        counts = {"zh": 0, "en": 0, "multi": 0}
+        for title, summary in rows:
+            counts[self._infer_language(title=title, summary=summary)] += 1
+        return [
+            FilterOptionOut(label="中文", value="zh", count=counts["zh"]),
+            FilterOptionOut(label="English", value="en", count=counts["en"]),
+            FilterOptionOut(label="多语言", value="multi", count=counts["multi"]),
+        ]
+
+    def _get_dashboard(self) -> SkillDashboardOut:
+        total = self.db.scalar(
+            select(func.count())
+            .select_from(Skill)
+            .join(Category, Skill.category_id == Category.id)
+            .where(
+                Skill.status == "published",
+                Skill.deleted_at.is_(None),
+                Category.deleted_at.is_(None),
+                Category.is_enabled.is_(True),
+            )
+        ) or 0
+
+        type_rows = self.db.execute(
+            select(Skill.title, Skill.summary, Skill.type, Skill.recommended_models, Skill.source_name)
+            .join(Category, Skill.category_id == Category.id)
+            .where(
+                Skill.status == "published",
+                Skill.deleted_at.is_(None),
+                Category.deleted_at.is_(None),
+                Category.is_enabled.is_(True),
+            )
+        ).all()
+
+        featured_type_counts = {value: 0 for _, value, _ in FEATURED_TYPE_RULES}
+        tool_counts = {value: 0 for _, value, _ in TOOL_RULES}
+
+        for title, summary, skill_type, recommended_models, source_name in type_rows:
+            source = " ".join(
+                [
+                    title or "",
+                    summary or "",
+                    source_name or "",
+                    " ".join(recommended_models or []),
+                ]
+            )
+
+            matched_feature = False
+            for _, value, hints in FEATURED_TYPE_RULES:
+                if value == "skill-suite" and self._matches_any(title or "", hints):
+                    featured_type_counts[value] += 1
+                    matched_feature = True
+                    break
+                if hints and self._matches_any(source, hints):
+                    featured_type_counts[value] += 1
+                    matched_feature = True
+                    break
+
+            if not matched_feature and skill_type in {"tool_config", "agent", "workflow", "prompt"}:
+                featured_type_counts["general-skill"] += 1
+
+            for _, value, hints in TOOL_RULES:
+                if self._matches_any(source, hints):
+                    tool_counts[value] += 1
+
+        featured_types = [
+            SkillDashboardMetricOut(label=label, value=value, count=featured_type_counts.get(value, 0))
+            for label, value, _ in FEATURED_TYPE_RULES
+        ]
+
+        tool_metrics = [
+            SkillDashboardMetricOut(label=label, value=value, count=tool_counts.get(value, 0))
+            for label, value, _ in TOOL_RULES
+            if tool_counts.get(value, 0) > 0
+        ]
+        tool_metrics.sort(key=lambda item: (-item.count, item.label))
+
+        hot_scenes = [
+            SkillDashboardMetricOut(label=item.label, value=item.value, count=item.count or 0)
+            for item in self._get_tag_filters("scene")
+            if (item.count or 0) > 0
+        ]
+        hot_scenes.sort(key=lambda item: (-item.count, item.label))
+
+        return SkillDashboardOut(
+            total=int(total or 0),
+            featuredTypes=featured_types,
+            hotScenes=hot_scenes[:7],
+            topTools=tool_metrics[:8],
+        )
+
     def _apply_filters(self, stmt: Select, query: SkillQueryIn) -> Select:
         if query.q:
             keyword = f"%{query.q.strip()}%"
@@ -225,6 +482,8 @@ class SkillService:
 
         result: Dict[UUID, List[TagOut]] = {}
         for skill_id, tag in rows:
+            if tag.type not in SUPPORTED_TAG_TYPES:
+                continue
             result.setdefault(skill_id, []).append(
                 TagOut(id=str(tag.id), name=tag.name, slug=tag.slug, type=tag.type)
             )
@@ -365,6 +624,17 @@ class SkillService:
             fallback_category = self._category_out(category)
             primary_category = primary_category_map.get(skill.id, fallback_category)
             categories = category_map.get(skill.id, [primary_category])
+            item_tags = tags_map.get(skill.id, [])
+            runtime_labels = self._infer_runtimes(
+                title=skill.title,
+                summary=skill.summary,
+                source_name=skill.source_name,
+                source_url=skill.source_url,
+                original_author=skill.original_author,
+                recommended_models=skill.recommended_models or [],
+                tags=item_tags,
+                skill_type=skill.type,
+            )
             items.append(
                 SkillListItemOut(
                     id=str(skill.id),
@@ -376,7 +646,7 @@ class SkillService:
                     category=primary_category,
                     primaryCategory=primary_category,
                     categories=categories,
-                    tags=tags_map.get(skill.id, []),
+                    tags=item_tags,
                     difficulty=skill.difficulty,
                     type=skill.type,
                     recommendedModels=skill.recommended_models or [],
@@ -390,6 +660,15 @@ class SkillService:
                     sourceName=skill.source_name,
                     originalAuthor=skill.original_author,
                     license=skill.license,
+                    runtimeLabels=runtime_labels,
+                    primaryRuntime=runtime_labels[0] if runtime_labels else None,
+                    inferredSubtype=self._infer_subtype(
+                        title=skill.title,
+                        summary=skill.summary,
+                        runtimes=runtime_labels,
+                        skill_type=skill.type,
+                    ),
+                    inferredLanguage=self._infer_language(title=skill.title, summary=skill.summary),
                     isFavorited=skill.id in favorited_ids,
                 )
             )
@@ -429,6 +708,17 @@ class SkillService:
         fallback_category = self._category_out(category)
         primary_category = primary_category_map.get(skill.id, fallback_category)
         categories = category_map.get(skill.id, [primary_category])
+        detail_tags = tags_map.get(skill.id, [])
+        runtime_labels = self._infer_runtimes(
+            title=skill.title,
+            summary=skill.summary,
+            source_name=skill.source_name,
+            source_url=skill.source_url,
+            original_author=skill.original_author,
+            recommended_models=skill.recommended_models or [],
+            tags=detail_tags,
+            skill_type=skill.type,
+        )
 
         return SkillDetailOut(
             id=str(skill.id),
@@ -441,7 +731,7 @@ class SkillService:
             category=primary_category,
             primaryCategory=primary_category,
             categories=categories,
-            tags=tags_map.get(skill.id, []),
+            tags=detail_tags,
             difficulty=skill.difficulty,
             type=skill.type,
             useCase=skill.use_case,
@@ -457,26 +747,63 @@ class SkillService:
             sourceName=skill.source_name,
             originalAuthor=skill.original_author,
             license=skill.license,
+            runtimeLabels=runtime_labels,
+            primaryRuntime=runtime_labels[0] if runtime_labels else None,
+            inferredSubtype=self._infer_subtype(
+                title=skill.title,
+                summary=skill.summary,
+                runtimes=runtime_labels,
+                skill_type=skill.type,
+            ),
+            inferredLanguage=self._infer_language(title=skill.title, summary=skill.summary),
             isFavorited=skill.id in favorited_ids,
         )
 
     def _get_tag_filters(self, tag_type: str) -> List[FilterOptionOut]:
+        count_map = self._published_skill_count_by_tag_slug(tag_type=tag_type)
         rows = self.db.scalars(
             select(Tag)
             .where(Tag.type == tag_type, Tag.deleted_at.is_(None), Tag.is_enabled.is_(True))
             .order_by(Tag.sort_order.asc(), Tag.created_at.asc())
         ).all()
-        return [FilterOptionOut(label=row.name, value=row.slug, count=row.skill_count) for row in rows]
+        return [
+            FilterOptionOut(label=row.name, value=row.slug, count=count_map.get(row.slug, 0))
+            for row in rows
+            if count_map.get(row.slug, 0) > 0
+        ]
+
+    def _get_type_filters(self) -> List[FilterOptionOut]:
+        rows = self.db.execute(
+            select(Skill.type, func.count(func.distinct(Skill.id)))
+            .join(Category, Skill.category_id == Category.id)
+            .where(
+                Skill.status == "published",
+                Skill.deleted_at.is_(None),
+                Category.deleted_at.is_(None),
+                Category.is_enabled.is_(True),
+            )
+            .group_by(Skill.type)
+        ).all()
+        count_map = {skill_type: int(total or 0) for skill_type, total in rows}
+        return [
+            FilterOptionOut(label=label, value=value, count=count_map.get(value, 0))
+            for label, value in TYPE_OPTIONS
+        ]
 
     def get_filters(self) -> SkillFiltersOut:
         categories = self._flat_filter_categories()
+        category_count_map = self._published_skill_count_by_category_slug(level=1)
 
         return SkillFiltersOut(
             categories=[
-                FilterOptionOut(label=row.name, value=row.slug, count=row.skill_count)
+                FilterOptionOut(label=row.name, value=row.slug, count=category_count_map.get(row.slug, 0))
                 for row in categories
+                if category_count_map.get(row.slug, 0) > 0
             ],
             categoryTree=self._category_tree(),
             scenes=self._get_tag_filters("scene"),
-            types=TYPE_OPTIONS,
+            types=self._get_type_filters(),
+            runtimes=self._build_runtime_filters(),
+            languages=self._build_language_filters(),
+            dashboard=self._get_dashboard(),
         )
