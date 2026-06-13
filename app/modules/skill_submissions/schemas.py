@@ -85,6 +85,10 @@ class SkillSubmissionSubmitIn(BaseModel):
     submitNote: Optional[str] = Field(default=None, max_length=500)
 
 
+class DirectSkillSubmissionIn(SkillSubmissionDraftIn):
+    submitNote: Optional[str] = Field(default=None, max_length=500)
+
+
 class UserGithubSkillParseIn(BaseModel):
     github_url: str
 
@@ -99,6 +103,7 @@ class UserGithubSkillSubmitIn(BaseModel):
     difficulty: Optional[SkillDifficulty] = None
     tags: List[str] = Field(default_factory=list)
     use_cases: List[str] = Field(default_factory=list)
+    recommended_models: List[str] = Field(default_factory=list)
     usage_guide: Optional[str] = None
     example_input: Optional[str] = None
     example_output: Optional[str] = None

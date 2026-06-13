@@ -64,6 +64,8 @@ class GithubSkillImport(Base):
     parsed_skill_type: Mapped[Optional[str]] = mapped_column(String(100))
     parsed_difficulty: Mapped[Optional[str]] = mapped_column(String(50))
     parsed_tags: Mapped[Optional[list]] = mapped_column(JSONB)
+    parsed_use_cases: Mapped[Optional[list]] = mapped_column(JSONB)
+    parsed_models: Mapped[Optional[list]] = mapped_column(JSONB)
     parsed_license: Mapped[Optional[str]] = mapped_column(String(100))
     parsed_original_author: Mapped[Optional[str]] = mapped_column(String(255))
     raw_repo_json: Mapped[Optional[dict]] = mapped_column(JSONB)

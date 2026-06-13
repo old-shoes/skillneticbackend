@@ -214,6 +214,24 @@ USE_CASE_FRONTMATTER_KEYS = (
     "使用场景",
     "场景",
 )
+TOOL_FRONTMATTER_KEYS = (
+    "tools",
+    "tool",
+    "tool_tags",
+    "platforms",
+    "platform",
+    "runtimes",
+    "runtime",
+    "recommended_models",
+    "recommended_model",
+    "models",
+    "model",
+    "target_platform",
+    "适用工具",
+    "平台",
+    "运行平台",
+    "模型",
+)
 TAG_FRONTMATTER_KEYS = (
     "tags",
     "tag",
@@ -262,6 +280,11 @@ TAG_KEYWORDS = {
     "市场扫描": ["market scan", "market monitoring", "行情", "市场扫描"],
     "供应链": ["supply chain", "供应链"],
     "产业链": ["value chain", "产业链"],
+    "图片生成": ["image generation", "generate image", "图像生成", "图片生成", "出图"],
+    "品牌设计": ["brand design", "品牌设计", "品牌规范", "brand guideline"],
+    "Logo设计": ["logo", "logo design", "logo system", "标志设计", "logo设计"],
+    "视觉识别": ["visual identity", "brand identity", "视觉识别", "品牌识别"],
+    "创意设计": ["creative direction", "creative concept", "创意设计", "创意方案"],
 }
 HIGH_RISK_FINANCE_TAGS = {"投资研究", "股票研究", "市场扫描", "供应链", "产业链"}
 AGENTIC_REPO_KEYWORDS = {
@@ -357,30 +380,402 @@ MODEL_KEYWORDS: Dict[str, List[str]] = {
     "azure-openai": ["azure openai", "azure-openai", "azure_openai"],
     "deepseek": ["deepseek"],
 }
+LEGACY_MODEL_NAME_MAP: Dict[str, str] = {
+    "openai": "OpenAI",
+    "claude": "Claude",
+    "gemini": "Gemini",
+    "ollama": "Ollama",
+    "groq": "Groq",
+    "azure-openai": "Azure",
+    "deepseek": "DeepSeek",
+}
+RESOURCE_TYPE_RULES: Dict[str, Dict[str, List[str]]] = {
+    "prompt": {
+        "strong": [
+            "prompt template",
+            "system prompt",
+            "prompt library",
+            "claude.md",
+            "instructions",
+            "instruction",
+            "提示词",
+            "模板",
+        ],
+        "weak": ["prompt", "rules", "template", "rule"],
+    },
+    "tool_config": {
+        "strong": [
+            "skill.md",
+            ".claude/skills",
+            ".openclaw/skills",
+            "install skill",
+            "one focused capability",
+            "单一能力",
+            "技能包",
+        ],
+        "weak": ["skill", "skills", "plugin-like capability", "capability"],
+    },
+    "workflow": {
+        "strong": [
+            "workflow",
+            "playbook",
+            "operating procedure",
+            "standard operating procedure",
+            "pipeline",
+            "methodology",
+            "sop",
+            "流程编排",
+            "工作流",
+            "方法论",
+        ],
+        "weak": ["process", "stages", "stage", "orchestration", "automation"],
+    },
+    "agent": {
+        "strong": [
+            "agent platform",
+            "agent runtime",
+            "runtime",
+            "gateway",
+            "session management",
+            "task runner",
+            "orchestrator",
+            "workspace",
+            "daemon",
+            "dashboard",
+            "运行平台",
+            "运行时",
+            "统一网关",
+        ],
+        "weak": ["multi-agent", "task management", "channels", "web ui", "cli", "api server"],
+    },
+    "tutorial": {
+        "strong": [
+            "agent framework",
+            "framework",
+            "sdk",
+            "library",
+            "developer platform",
+            "build agents",
+            "开发者框架",
+            "开发框架",
+        ],
+        "weak": ["api", "abstraction", "extension", "package", "toolkit"],
+    },
+}
+RESOURCE_TYPE_PRIORITY: Dict[str, int] = {
+    "tutorial": 5,
+    "agent": 4,
+    "workflow": 3,
+    "tool_config": 2,
+    "prompt": 1,
+}
+CATEGORY_HINTS_BY_SLUG: Dict[str, List[str]] = {
+    "软件工程": ["software engineering", "engineering", "backend", "frontend", "api design", "代码", "开发", "工程"],
+    "编码工作流": [
+        "coding workflow",
+        "developer workflow",
+        "coding agent",
+        "terminal coding agent",
+        "plan implement test review",
+        "codebase",
+        "patch",
+        "review code",
+        "编码工作流",
+        "代码工作流",
+    ],
+    "cli生态": [
+        "cli",
+        "command line",
+        "terminal",
+        "shell",
+        "local coding agent",
+        "runs in your terminal",
+        "cli tool",
+        "命令行",
+        "终端",
+    ],
+    "产品管理": ["product management", "prd", "roadmap", "spec", "requirements", "需求澄清", "需求分析"],
+    "知识管理": ["knowledge base", "knowledge management", "rag", "documentation search", "知识库", "知识管理"],
+    "上下文工程": ["context engineering", "prompt engineering", "context window", "上下文工程"],
+    "办公效率": ["productivity", "office", "automation", "效率工具", "办公效率", "剪贴板", "截图"],
+    "企业协作": ["collaboration", "slack", "discord", "telegram", "message", "会议", "协作"],
+    "浏览器自动化": ["browser automation", "browser", "playwright", "chrome", "网页自动化", "浏览器自动化"],
+    "金融投研": ["equity research", "financial model", "investment research", "投研", "量化", "估值", "交易研究"],
+    "量化交易": ["quant", "trading", "alpha", "strategy", "套利", "量化交易"],
+    "自治研究": ["deep research", "research automation", "paper", "文献检索", "研究自动化"],
+    "多智能体": ["multi-agent", "multi agent", "agent team", "子代理", "多智能体"],
+    "agent平台": ["agent platform", "workspace", "task runner", "channels", "agent gateway"],
+    "agent运行时": ["agent runtime", "runtime", "session management", "daemon"],
+    "agent框架": ["agent framework", "sdk", "build agents", "library"],
+    "agent安全": ["agent security", "sandbox", "policy", "安全检测", "沙箱隔离"],
+    "自动化": ["automation", "workflow automation", "process automation", "自动执行"],
+    "设计系统": [
+        "design system",
+        "component library",
+        "brand system",
+        "brand guideline",
+        "brand board",
+        "identity board",
+        "视觉规范",
+        "品牌规范",
+        "品牌系统",
+        "设计系统",
+    ],
+    "ui-ux": [
+        "ui/ux",
+        "ux",
+        "interface design",
+        "visual identity",
+        "brand identity",
+        "logo system",
+        "logo",
+        "wordmark",
+        "favicon",
+        "mockup",
+        "symbol meaning",
+        "视觉设计",
+        "用户体验",
+        "品牌识别",
+        "视觉识别",
+        "字标",
+        "图形标识",
+        "logo设计",
+        "品牌设计",
+    ],
+    "支付基础设施": ["payment", "wallet", "checkout", "支付", "结算"],
+    "web3安全": ["web3 security", "smart contract audit", "链上审计", "漏洞处置"],
+}
+SCENE_HINTS_BY_SLUG: Dict[str, List[str]] = {
+    "需求分析": ["需求澄清", "requirements", "requirement analysis", "prd", "spec"],
+    "方案设计": [
+        "solution design",
+        "architecture",
+        "design proposal",
+        "creative direction",
+        "concept direction",
+        "logo direction",
+        "symbol concept",
+        "创意方案",
+        "方案设计",
+    ],
+    "代码生成": ["code generation", "generate code", "代码生成"],
+    "测试验证": ["testing", "test automation", "pytest", "测试验证"],
+    "流程编排": ["workflow", "pipeline", "playbook", "orchestration", "流程编排"],
+    "协作编排": ["multi-agent collaboration", "coordination", "协作编排"],
+    "自动执行": ["automation", "auto run", "自动执行"],
+    "研究自动化": ["research automation", "deep research", "研究自动化"],
+    "知识问答": ["knowledge qa", "question answering", "知识问答"],
+    "文档协作": ["docs", "document", "notion", "文档协作"],
+    "CLI助手": [
+        "cli",
+        "command line",
+        "terminal",
+        "shell",
+        "runs in your terminal",
+        "命令行",
+        "终端",
+    ],
+    "浏览器自动化": ["browser automation", "playwright", "chrome", "浏览器自动化"],
+    "Agent开发": ["agent development", "build agents", "agent framework", "agent开发"],
+    "Agent运行管理": ["agent runtime", "session management", "task runner", "agent运行管理"],
+    "模型接入": ["model integration", "llm provider", "openrouter", "多模型接入", "模型接入"],
+    "外部接入": ["integration", "api integration", "external access", "外部接入"],
+    "工具调用": ["tool use", "tool calling", "工具调用"],
+    "记忆管理": ["memory", "long-term memory", "记忆管理"],
+    "安全检测": ["security detection", "policy check", "安全检测"],
+    "沙箱隔离": ["sandbox", "sandbox execution", "沙箱隔离"],
+    "发布上线": ["deploy", "release", "上线交付", "发布上线"],
+    "数据分析": ["data analysis", "analytics", "dashboard", "数据分析"],
+    "交易研究": ["trading research", "market research", "交易研究"],
+    "内容生成": [
+        "content generation",
+        "generate content",
+        "image generation",
+        "generate image",
+        "render image",
+        "logo generation",
+        "图片生成",
+        "内容生成",
+        "出图",
+    ],
+    "设计系统": [
+        "design system",
+        "brand system",
+        "visual identity",
+        "brand identity",
+        "logo system",
+        "wordmark lockup",
+        "favicon",
+        "seal version",
+        "mockup",
+        "symbol meaning",
+        "品牌系统",
+        "品牌规范",
+        "视觉识别",
+        "品牌识别",
+    ],
+    "软件开发": [
+        "software development",
+        "coding agent",
+        "developer tool",
+        "edit code",
+        "write code",
+        "run tests",
+        "修复 bug",
+        "代码修改",
+        "软件开发",
+    ],
+}
+TOOL_HINTS_BY_NAME: Dict[str, List[str]] = {
+    "Claude Code": ["claude code", "claude-code", "claude md", "claude desktop"],
+    "Codex": ["codex", "openai codex"],
+    "Cursor": ["cursor"],
+    "Gemini CLI": ["gemini cli", "gemini-cli"],
+    "OpenClaw": ["openclaw"],
+    "GitHub Copilot": ["github copilot", "copilot"],
+    "MCP": ["mcp", "model context protocol"],
+    "OpenAI": ["openai", "gpt-4", "gpt-4o", "chatgpt"],
+    "Claude": ["claude", "anthropic"],
+    "Gemini": ["gemini", "google ai"],
+    "Ollama": ["ollama"],
+    "OpenRouter": ["openrouter"],
+    "Docker": ["docker"],
+    "Telegram": ["telegram"],
+    "Discord": ["discord"],
+    "Slack": ["slack"],
+    "Python": ["python", "pip install"],
+    "Node.js": ["node.js", "nodejs", "npm", "npx"],
+}
+EXTRA_TOOL_HINTS_BY_NAME: Dict[str, List[str]] = {
+    "Anthropic": ["anthropic", "claude api"],
+    "CLI": ["cli", "command line"],
+    "Web UI": ["web ui", "dashboard", "browser ui"],
+    "Docker": ["docker", "docker compose"],
+    "GitHub Actions": ["github actions", "workflow dispatch"],
+    "GPT Image": ["gpt image", "gpt-image", "openai image", "image api"],
+    "Midjourney": ["midjourney"],
+    "Flux": ["flux"],
+    "Ideogram": ["ideogram"],
+    "Python": ["python", "pip install"],
+    "Node.js": ["node.js", "nodejs", "npm", "npx"],
+}
+SCENE_ALIAS_MAP: Dict[str, str] = {
+    "agent应用": "Agent开发",
+    "agent构建": "Agent开发",
+    "集成开发": "Agent开发",
+    "agent运行": "Agent运行管理",
+    "agent部署": "Agent运行管理",
+    "agent配置": "Agent运行管理",
+    "上下文管理": "记忆管理",
+    "长期上下文": "记忆管理",
+    "长期记忆": "记忆管理",
+    "记忆提取": "记忆管理",
+    "记忆检索": "记忆管理",
+    "任务管理": "流程编排",
+    "任务编排": "流程编排",
+    "流程治理": "流程编排",
+    "安全审计": "安全检测",
+    "安全巡检": "安全检测",
+    "安全扫描": "安全检测",
+    "实验执行": "实验管理",
+    "实验评估": "实验管理",
+    "漏洞修复": "漏洞处置",
+    "漏洞响应": "漏洞处置",
+    "策略发现": "策略研发",
+    "策略测试": "策略研发",
+    "策略进化": "策略研发",
+    "脚本执行": "自动执行",
+    "自动化执行": "自动执行",
+    "ppt生成": "PPT自动化",
+    "ppt还原": "PPT自动化",
+    "ppt工作流": "PPT自动化",
+    "职位筛选": "求职管理",
+    "岗位打分": "求职管理",
+    "求职追踪": "求职管理",
+}
+TOOL_ALIAS_MAP: Dict[str, Optional[str]] = {
+    "claude": "Claude",
+    "claudecode插件": "Claude Code",
+    "claudemd": "Claude Code",
+    "anthropicapi": "Anthropic",
+    "cursor规则文件": "Cursor",
+    "openaiagentskills": "AgentSkills",
+    "agentskillscompatibleruntimes": "AgentSkills",
+    "npxskills": "AgentSkills",
+    "本地claudecode": "Claude Code",
+    "openclawcompatibletools": "OpenClaw",
+    "gui": "Web UI",
+    "dockertoolserver": "Docker",
+    "人类用户": None,
+    "aiagents": None,
+    "agents": None,
+}
+DOMAIN_ALIAS_MAP: Dict[str, str] = {
+    "agentframework": "agent框架",
+    "productionagentframework": "agent框架",
+    "agentplatform": "agent平台",
+    "uidesignskills": "ui-ux",
+    "workflowgovernance": "流程治理",
+    "branddesign": "ui-ux",
+    "logodesign": "ui-ux",
+    "visualidentity": "ui-ux",
+    "brandidentity": "ui-ux",
+    "brandsystem": "设计系统",
+}
 GENERIC_TAG_CODES = {
     "github",
     "prompt",
     "tutorial",
     "workflow",
     "paper",
+    "skill",
+    "platform",
+}
+GENERIC_TOOL_VALUES = {
+    "all",
+    "universal",
+    "default",
+    "none",
+    "null",
+}
+GENERIC_HINTED_SCENES = {
+    "流程编排",
+    "自动执行",
+    "协作编排",
+    "模型接入",
+    "Agent运行管理",
+    "Agent开发",
+    "工具调用",
+    "外部接入",
+}
+SECONDARY_GENERIC_SCENES = {
+    "发布上线",
+    "文档协作",
+    "资源参考",
+}
+GENERIC_FREEFORM_TAGS = {
+    "skill",
+    "skills",
+    "platform",
+    "workflow",
+    "prompt",
+    "github",
+    "agent",
+    "agents",
 }
 SKILL_TYPE_PATTERNS: List[Tuple[str, str, List[str]]] = [
-    ("agent-framework", "agent", ["multi-agent framework", "agent framework", "multi agent", "software company", "agent team"]),
-    ("sdk-library", "tool_config", ["sdk", "library", "package", "pip install", "python package"]),
-    ("cli-tool", "tool_config", ["cli", "command line", "terminal", "npx", "python -m"]),
-    ("desktop-tool", "tool_config", ["macos app", "desktop app", "menu bar app", "clipboard manager", "screenshot tool", "swiftui", "swift app"]),
-    ("workflow-template", "workflow", ["workflow", "pipeline", "automation", "orchestration"]),
-    ("prompt-template", "prompt", ["prompt template", "system prompt", "prompt engineering"]),
-    ("github-repo", "workflow", ["github repository", "open source project", "repository"]),
+    ("developer-framework", "tutorial", RESOURCE_TYPE_RULES["tutorial"]["strong"] + RESOURCE_TYPE_RULES["tutorial"]["weak"]),
+    ("agent-runtime-platform", "agent", RESOURCE_TYPE_RULES["agent"]["strong"] + RESOURCE_TYPE_RULES["agent"]["weak"]),
+    ("workflow-playbook", "workflow", RESOURCE_TYPE_RULES["workflow"]["strong"] + RESOURCE_TYPE_RULES["workflow"]["weak"]),
+    ("single-skill", "tool_config", RESOURCE_TYPE_RULES["tool_config"]["strong"] + RESOURCE_TYPE_RULES["tool_config"]["weak"]),
+    ("prompt-template", "prompt", RESOURCE_TYPE_RULES["prompt"]["strong"] + RESOURCE_TYPE_RULES["prompt"]["weak"]),
 ]
 SKILL_TYPE_CODE_TO_RUNTIME: Dict[str, str] = {
-    "agent-framework": "agent",
-    "github-repo": "workflow",
-    "sdk-library": "tool_config",
-    "cli-tool": "tool_config",
-    "desktop-tool": "tool_config",
+    "developer-framework": "tutorial",
+    "agent-runtime-platform": "agent",
+    "workflow-playbook": "workflow",
+    "single-skill": "tool_config",
     "prompt-template": "prompt",
-    "workflow-template": "workflow",
 }
 
 
@@ -420,6 +815,13 @@ class TaxonomyMatch:
     name: str
     score: float
     reason: str
+
+
+@dataclass
+class SignalBlock:
+    name: str
+    text: str
+    weight: float
 
 
 @dataclass
@@ -727,6 +1129,17 @@ class GithubSkillService:
                 return stripped
         return text.strip()
 
+    def _first_n_paragraphs(self, text: str, limit: int = 3) -> str:
+        blocks: List[str] = []
+        for block in re.split(r"\n\s*\n", text):
+            stripped = block.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            blocks.append(stripped)
+            if len(blocks) >= limit:
+                break
+        return "\n\n".join(blocks)
+
     def _strip_noisy_markdown(self, text: str) -> str:
         if not text:
             return ""
@@ -836,6 +1249,91 @@ class GithubSkillService:
             return None
         return USE_CASE_ALIASES.get(cleaned)
 
+    def _normalize_slug_key(self, value: str) -> str:
+        return re.sub(r"[\s_\-]+", "", (value or "").strip().lower())
+
+    def _slug_index(self, values: Iterable[str]) -> Dict[str, str]:
+        index: Dict[str, str] = {}
+        for value in values:
+            cleaned = str(value or "").strip()
+            if not cleaned:
+                continue
+            index[self._normalize_slug_key(cleaned)] = cleaned
+        return index
+
+    def _scene_slug_name_map(self) -> Dict[str, str]:
+        return {
+            item.code: item.name
+            for item in self._tag_candidates("scene")
+        }
+
+    def _scene_name_slug_map(self) -> Dict[str, str]:
+        mapping: Dict[str, str] = {}
+        for item in self._tag_candidates("scene"):
+            mapping[self._normalize_slug_key(item.name)] = item.name
+            mapping[self._normalize_slug_key(item.code)] = item.name
+        return mapping
+
+    def _category_slug_map(self) -> Dict[str, str]:
+        return {
+            item.code: item.code
+            for item in self._category_candidates()
+        }
+
+    def _category_name_slug_map(self) -> Dict[str, str]:
+        mapping: Dict[str, str] = {}
+        for item in self._category_candidates():
+            mapping[self._normalize_slug_key(item.name)] = item.code
+            mapping[self._normalize_slug_key(item.code)] = item.code
+        return mapping
+
+    def _tool_name_map(self) -> Dict[str, str]:
+        mapping: Dict[str, str] = {}
+        for item in self._tag_candidates("tool"):
+            mapping[self._normalize_slug_key(item.name)] = item.name
+            mapping[self._normalize_slug_key(item.code)] = item.name
+        for name in EXTRA_TOOL_HINTS_BY_NAME:
+            mapping.setdefault(self._normalize_slug_key(name), name)
+        return mapping
+
+    def _canonical_scene_name(self, value: str) -> Optional[str]:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            return None
+        normalized = self._normalize_slug_key(cleaned)
+        scene_map = self._scene_name_slug_map()
+        if normalized in SCENE_ALIAS_MAP:
+            normalized = self._normalize_slug_key(SCENE_ALIAS_MAP[normalized])
+        return scene_map.get(normalized)
+
+    def _canonical_tool_name(self, value: str) -> Optional[str]:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            return None
+        normalized = self._normalize_slug_key(cleaned)
+        if normalized in GENERIC_TOOL_VALUES:
+            return None
+        alias = TOOL_ALIAS_MAP.get(normalized)
+        if alias is None and normalized in TOOL_ALIAS_MAP:
+            return None
+        if alias:
+            cleaned = alias
+            normalized = self._normalize_slug_key(alias)
+        tool_map = self._tool_name_map()
+        return tool_map.get(normalized, cleaned[:50])
+
+    def _canonical_category_slug(self, value: str) -> Optional[str]:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            return None
+        normalized = self._normalize_slug_key(cleaned)
+        alias = DOMAIN_ALIAS_MAP.get(normalized)
+        if alias:
+            cleaned = alias
+            normalized = self._normalize_slug_key(alias)
+        mapping = self._category_name_slug_map()
+        return mapping.get(normalized)
+
     def _normalize_use_case_candidates(self, values: Iterable[str]) -> List[str]:
         normalized: List[str] = []
         seen = set()
@@ -851,6 +1349,31 @@ class GithubSkillService:
         return self._normalize_use_case_candidates(
             [item.code for item in matches] + [item.name for item in matches]
         )
+
+    def _normalize_scene_values(self, values: Iterable[str]) -> List[str]:
+        normalized: List[str] = []
+        seen = set()
+        for raw in values:
+            mapped = self._canonical_scene_name(str(raw or ""))
+            if not mapped or mapped in seen:
+                continue
+            seen.add(mapped)
+            normalized.append(mapped)
+        return normalized
+
+    def _normalize_tool_values(self, values: Iterable[str]) -> List[str]:
+        normalized: List[str] = []
+        seen = set()
+        for raw in values:
+            mapped = self._canonical_tool_name(str(raw or ""))
+            if not mapped:
+                continue
+            key = self._normalize_slug_key(mapped)
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(mapped)
+        return normalized
 
     def _extract_prompt_role(self, frontmatter: Dict[str, Any], skill_body: str, title: str, skill_type: Optional[str]) -> Optional[str]:
         metadata = frontmatter.get("metadata")
@@ -914,16 +1437,22 @@ class GithubSkillService:
                 raw_values.extend([str(item) for item in value])
             elif isinstance(value, str):
                 raw_values.extend([item.strip() for item in re.split(r"[,，/\n|]+", value) if item.strip()])
+        return self._normalize_scene_values(raw_values)
 
-        normalized: List[str] = []
-        seen = set()
-        for raw in raw_values:
-            mapped = self._normalize_use_case_value(raw)
-            if not mapped or mapped in seen:
+    def _parse_frontmatter_tools(self, frontmatter: Dict[str, Any]) -> List[str]:
+        raw_values: List[str] = []
+        metadata = frontmatter.get("metadata") if isinstance(frontmatter.get("metadata"), dict) else {}
+        for key in TOOL_FRONTMATTER_KEYS:
+            value = frontmatter.get(key)
+            if value is None and isinstance(metadata, dict):
+                value = metadata.get(key)
+            if value is None:
                 continue
-            seen.add(mapped)
-            normalized.append(mapped)
-        return normalized
+            if isinstance(value, list):
+                raw_values.extend([str(item).strip() for item in value if str(item).strip()])
+            elif isinstance(value, str):
+                raw_values.extend([item.strip() for item in re.split(r"[,，/\n|]+", value) if item.strip()])
+        return self._normalize_tool_values(raw_values)
 
     def _parse_frontmatter_tags(self, frontmatter: Dict[str, Any]) -> List[str]:
         raw_values: List[str] = []
@@ -963,35 +1492,36 @@ class GithubSkillService:
         pattern = rf"(?<![a-z0-9]){re.escape(normalized_keyword)}(?![a-z0-9])"
         return re.search(pattern, normalized_text) is not None
 
-    def _score_taxonomy_candidate(self, candidate: TaxonomyCandidate, text: str) -> Optional[TaxonomyMatch]:
+    def _score_taxonomy_candidate(self, candidate: TaxonomyCandidate, text: str, *, weight: float = 1.0, source_name: Optional[str] = None) -> Optional[TaxonomyMatch]:
         normalized = self._normalize_text(text)
         if not normalized:
             return None
 
         score = 0.0
         reasons: List[str] = []
+        source_prefix = f"[{source_name}] " if source_name else ""
 
         code_value = self._normalize_text(candidate.code)
         if code_value and self._contains_keyword(normalized, code_value):
-            score += 8
-            reasons.append(f"命中 code: {candidate.code}")
+            score += 8 * weight
+            reasons.append(f"{source_prefix}命中 code: {candidate.code}")
 
         name_value = self._normalize_text(candidate.name)
         if name_value and self._contains_keyword(normalized, name_value):
-            score += 6
-            reasons.append(f"命中名称: {candidate.name}")
+            score += 6 * weight
+            reasons.append(f"{source_prefix}命中名称: {candidate.name}")
 
         for alias in candidate.aliases:
             alias_value = self._normalize_text(alias)
             if alias_value and self._contains_keyword(normalized, alias_value):
-                score += 5
-                reasons.append(f"命中别名: {alias}")
+                score += 5 * weight
+                reasons.append(f"{source_prefix}命中别名: {alias}")
 
         for keyword in candidate.keywords:
             keyword_value = self._normalize_text(keyword)
             if keyword_value and self._contains_keyword(normalized, keyword_value):
-                score += 3 if " " in keyword_value else 1
-                reasons.append(f"命中关键词: {keyword}")
+                score += (3 if " " in keyword_value else 1) * weight
+                reasons.append(f"{source_prefix}命中关键词: {keyword}")
 
         if score <= 0:
             return None
@@ -1031,16 +1561,91 @@ class GithubSkillService:
                 break
         return deduped
 
+    def _match_one_weighted(
+        self,
+        candidates: Iterable[TaxonomyCandidate],
+        blocks: Iterable[SignalBlock],
+        *,
+        min_score: float = 3,
+    ) -> Optional[TaxonomyMatch]:
+        aggregated: Dict[str, TaxonomyMatch] = {}
+        candidate_list = list(candidates)
+        for block in blocks:
+            if not (block.text or "").strip():
+                continue
+            for candidate in candidate_list:
+                match = self._score_taxonomy_candidate(candidate, block.text, weight=block.weight, source_name=block.name)
+                if not match:
+                    continue
+                existing = aggregated.get(match.code)
+                if existing is None:
+                    aggregated[match.code] = match
+                else:
+                    aggregated[match.code] = TaxonomyMatch(
+                        code=existing.code,
+                        name=existing.name,
+                        score=existing.score + match.score,
+                        reason=f"{existing.reason}；{match.reason}",
+                    )
+        matches = [item for item in aggregated.values() if item.score >= min_score]
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (-item.score, item.code))
+        return matches[0]
+
+    def _match_many_weighted(
+        self,
+        candidates: Iterable[TaxonomyCandidate],
+        blocks: Iterable[SignalBlock],
+        *,
+        min_score: float = 2,
+        limit: int = 8,
+    ) -> List[TaxonomyMatch]:
+        aggregated: Dict[str, TaxonomyMatch] = {}
+        candidate_list = list(candidates)
+        for block in blocks:
+            if not (block.text or "").strip():
+                continue
+            for candidate in candidate_list:
+                match = self._score_taxonomy_candidate(candidate, block.text, weight=block.weight, source_name=block.name)
+                if not match:
+                    continue
+                existing = aggregated.get(match.code)
+                if existing is None:
+                    aggregated[match.code] = match
+                else:
+                    aggregated[match.code] = TaxonomyMatch(
+                        code=existing.code,
+                        name=existing.name,
+                        score=existing.score + match.score,
+                        reason=f"{existing.reason}；{match.reason}",
+                    )
+        matches = [item for item in aggregated.values() if item.score >= min_score]
+        matches.sort(key=lambda item: (-item.score, item.code))
+        return matches[:limit]
+
     def _category_candidates(self) -> List[TaxonomyCandidate]:
         rows = self.db.scalars(
             select(Category).where(Category.deleted_at.is_(None), Category.is_enabled.is_(True))
         ).all()
+        hint_map = {key: value[:] for key, value in CATEGORY_HINTS_BY_SLUG.items()}
         return [
             TaxonomyCandidate(
                 code=item.slug,
                 name=item.name,
-                aliases=[alias for alias in [item.name_en, item.slug.replace("-", " ")] if alias],
-                keywords=[item.description] if item.description else [],
+                aliases=[
+                    alias for alias in [
+                        item.name_en,
+                        item.slug.replace("-", " "),
+                        *hint_map.get(item.slug, []),
+                    ] if alias
+                ],
+                keywords=[
+                    keyword for keyword in [
+                        item.description,
+                        *hint_map.get(item.slug, []),
+                    ] if keyword
+                ],
                 source_type="category",
             )
             for item in rows
@@ -1054,12 +1659,28 @@ class GithubSkillService:
                 Tag.type == tag_type,
             )
         ).all()
+        hint_map: Dict[str, List[str]] = {}
+        if tag_type == "scene":
+            hint_map = {key: value[:] for key, value in SCENE_HINTS_BY_SLUG.items()}
+        elif tag_type == "tool":
+            hint_map = {
+                self._slug_index([key]).popitem()[0]: value[:]
+                for key, value in {**TOOL_HINTS_BY_NAME, **EXTRA_TOOL_HINTS_BY_NAME}.items()
+            }
         return [
             TaxonomyCandidate(
                 code=item.slug,
                 name=item.name,
-                aliases=[item.slug.replace("-", " ")],
-                keywords=[item.name],
+                aliases=[
+                    item.slug.replace("-", " "),
+                    *hint_map.get(item.name, []),
+                    *hint_map.get(item.slug, []),
+                ],
+                keywords=[
+                    item.name,
+                    *hint_map.get(item.name, []),
+                    *hint_map.get(item.slug, []),
+                ],
                 source_type=tag_type,
             )
             for item in rows
@@ -1075,7 +1696,7 @@ class GithubSkillService:
         return [
             TaxonomyCandidate(
                 code=code,
-                name=code.replace("-", " "),
+                name=normalized_type,
                 aliases=[label, normalized_type.replace("_", " ")],
                 keywords=keywords,
                 source_type="skill_type",
@@ -1083,6 +1704,64 @@ class GithubSkillService:
             for code, normalized_type, keywords in SKILL_TYPE_PATTERNS
             for label in [code.replace("-", " ")]
         ]
+
+    def _score_rule_hits(self, text: str, keywords: Iterable[str], *, strong: bool = False) -> int:
+        score = 0
+        for keyword in keywords:
+            if self._contains_keyword(text, keyword):
+                score += 4 if strong else 1
+        return score
+
+    def _rule_based_skill_type(self, text: str, *, has_skill_md: bool) -> Optional[str]:
+        normalized = self._normalize_text(text)
+        scores: Dict[str, int] = {}
+        for skill_type, rules in RESOURCE_TYPE_RULES.items():
+            score = self._score_rule_hits(normalized, rules.get("strong", []), strong=True)
+            score += self._score_rule_hits(normalized, rules.get("weak", []), strong=False)
+            if skill_type == "tool_config" and has_skill_md:
+                score += 6
+            if skill_type == "prompt" and has_skill_md:
+                score -= 2
+            if score > 0:
+                scores[skill_type] = score
+        if not scores:
+            return None
+        return max(
+            scores.items(),
+            key=lambda item: (item[1], RESOURCE_TYPE_PRIORITY.get(item[0], 0)),
+        )[0]
+
+    def _hint_matches(self, text: str, hint_map: Dict[str, List[str]], *, limit: int = 5) -> List[str]:
+        normalized = self._normalize_text(text)
+        scored: List[Tuple[str, int]] = []
+        for code, hints in hint_map.items():
+            score = 0
+            for hint in hints:
+                if self._contains_keyword(normalized, hint):
+                    score += 1
+            if score > 0:
+                scored.append((code, score))
+        scored.sort(key=lambda item: (-item[1], item[0]))
+        return [code for code, _ in scored[:limit]]
+
+    def _preferred_category_slug(self, matched: Optional[str], hinted: List[str]) -> Optional[str]:
+        if matched:
+            canonical = self._canonical_category_slug(matched)
+            if canonical:
+                return canonical
+        for item in hinted:
+            canonical = self._canonical_category_slug(item)
+            if canonical:
+                return canonical
+        return None
+
+    def _preferred_scene_values(self, matched: List[str], explicit: List[str], inferred: List[str], hinted: List[str]) -> List[str]:
+        combined = [*matched, *explicit, *inferred, *hinted]
+        return self._normalize_scene_values(combined)[:8]
+
+    def _preferred_model_values(self, matched: List[str], hinted: List[str]) -> List[str]:
+        converted = [LEGACY_MODEL_NAME_MAP.get(str(item or "").strip().lower(), str(item or "").strip()) for item in [*matched, *hinted]]
+        return self._normalize_tool_values(converted)[:8]
 
     def _build_search_text(self, repo: ParsedGithubRepo, title: str, description: str, frontmatter: Dict[str, Any], skill_body: str) -> str:
         metadata = frontmatter.get("metadata") if isinstance(frontmatter.get("metadata"), dict) else {}
@@ -1109,6 +1788,72 @@ class GithubSkillService:
                 ],
             )
         )
+
+    def _build_signal_blocks(
+        self,
+        repo: ParsedGithubRepo,
+        title: str,
+        description: str,
+        frontmatter: Dict[str, Any],
+        skill_body: str,
+    ) -> List[SignalBlock]:
+        metadata = frontmatter.get("metadata") if isinstance(frontmatter.get("metadata"), dict) else {}
+        cleaned_description = self._strip_noisy_markdown(description)
+        cleaned_skill_body = self._strip_noisy_markdown(skill_body[:8000])
+        cleaned_skill_md = self._strip_noisy_markdown(repo.skill_md_text[:8000])
+        cleaned_readme = self._strip_noisy_markdown(repo.readme_text[:15000])
+        readme_intro = self._strip_noisy_markdown(self._first_n_paragraphs(repo.readme_text[:8000], limit=3))
+        skill_intro = self._strip_noisy_markdown(self._first_n_paragraphs(skill_body[:6000], limit=3))
+        topic_text = " ".join(repo.topics or [])
+        frontmatter_text = json.dumps(frontmatter, ensure_ascii=False) if frontmatter else ""
+        metadata_text = json.dumps(metadata, ensure_ascii=False) if metadata else ""
+        blocks = [
+            SignalBlock("repo_name", repo.name, 3.0),
+            SignalBlock("title", title, 3.0),
+            SignalBlock("topics", topic_text, 2.6),
+            SignalBlock("frontmatter", frontmatter_text, 2.5),
+            SignalBlock("metadata", metadata_text, 2.5),
+            SignalBlock("repo_description", repo.description, 2.2),
+            SignalBlock("preferred_description", cleaned_description, 2.2),
+            SignalBlock("skill_intro", skill_intro, 2.1),
+            SignalBlock("readme_intro", readme_intro, 2.0),
+            SignalBlock("skill_body", cleaned_skill_body, 1.3),
+            SignalBlock("readme_full", cleaned_readme, 0.7),
+            SignalBlock("skill_md_full", cleaned_skill_md, 0.6),
+            SignalBlock("language", repo.language or "", 0.4),
+            SignalBlock("license", repo.license or "", 0.2),
+        ]
+        return [block for block in blocks if (block.text or "").strip()]
+
+    def _prune_generic_scenes(
+        self,
+        scenes: List[str],
+        *,
+        category: Optional[str],
+        skill_type: Optional[str],
+    ) -> List[str]:
+        if not scenes:
+            return []
+        if skill_type not in {"agent", "workflow", "tutorial"}:
+            trimmed = [item for item in scenes if item not in GENERIC_HINTED_SCENES and item != "CLI助手"]
+            return trimmed or scenes[:2]
+        if category in {"ui-ux", "设计系统"}:
+            trimmed = [item for item in scenes if item not in GENERIC_HINTED_SCENES and item != "CLI助手"]
+            return trimmed or scenes[:3]
+        if any(item in scenes for item in {"软件开发", "CLI助手", "Agent开发"}):
+            trimmed = [item for item in scenes if item not in SECONDARY_GENERIC_SCENES]
+            return trimmed or scenes[:3]
+        return scenes
+
+    def _resource_type_tag_names(self, skill_type: Optional[str]) -> List[str]:
+        mapping = {
+            "prompt": ["Prompt"],
+            "tool_config": ["Skill"],
+            "workflow": ["Workflow"],
+            "agent": ["Agent运行平台"],
+            "tutorial": ["开发者框架"],
+        }
+        return mapping.get(str(skill_type or "").strip(), [])
 
     def _generate_suggested_taxonomies(
         self,
@@ -1185,6 +1930,21 @@ class GithubSkillService:
         if model_matches:
             score += 0.1
         return round(min(score, 1.0), 2)
+
+    def _extract_tool_matches_from_text(self, text: str) -> List[str]:
+        normalized = self._normalize_text(text)
+        if not normalized:
+            return []
+        matched: List[str] = []
+        seen = set()
+        for name, hints in EXTRA_TOOL_HINTS_BY_NAME.items():
+            if any(self._contains_keyword(normalized, hint) for hint in hints):
+                key = self._normalize_slug_key(name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                matched.append(name)
+        return matched
 
     def _runtime_skill_type(self, matched_code: Optional[str], fallback: Optional[str]) -> Optional[str]:
         if matched_code and matched_code in SKILL_TYPE_CODE_TO_RUNTIME:
@@ -1321,6 +2081,9 @@ class GithubSkillService:
         return deduped[:8]
 
     def _recommend_meta(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str], List[str], List[str]]:
+        return None, None, None, [], []
+
+    def _legacy_recommend_meta(self, text: str) -> Tuple[Optional[str], Optional[str], Optional[str], List[str], List[str]]:
         haystack = text.lower()
         finance_strong, finance_weak = self._finance_signal_strength(haystack)
         has_agentic_signal = self._has_any_keyword(haystack, AGENTIC_REPO_KEYWORDS)
@@ -1394,51 +2157,80 @@ class GithubSkillService:
         )
         title = str(frontmatter.get("name") or repo.name or parsed_url.repo).strip()
         merged_text = self._build_search_text(repo, title, description, frontmatter, skill_body)
-        category_match = self._match_one(self._category_candidates(), merged_text, min_score=3)
-        skill_type_match = self._match_one(self._skill_type_candidates(), merged_text, min_score=3)
+        signal_blocks = self._build_signal_blocks(repo, title, description, frontmatter, skill_body)
+        category_match = self._match_one_weighted(self._category_candidates(), signal_blocks, min_score=4)
+        skill_type_match = self._match_one_weighted(self._skill_type_candidates(), signal_blocks, min_score=4)
         scene_matches = [
-            item for item in self._match_many(self._tag_candidates("scene"), merged_text, min_score=2, limit=5)
+            item for item in self._match_many_weighted(self._tag_candidates("scene"), signal_blocks, min_score=4, limit=6)
             if item.code not in GENERIC_TAG_CODES
         ]
         tag_matches = [
-            item for item in self._match_many(self._tag_candidates("type"), merged_text, min_score=1, limit=12)
+            item for item in self._match_many_weighted(self._tag_candidates("type"), signal_blocks, min_score=6, limit=6)
             if item.code not in GENERIC_TAG_CODES
         ]
-        model_matches = self._match_many(self._model_candidates(), merged_text, min_score=1, limit=6)
+        model_matches = self._match_many_weighted(self._model_candidates(), signal_blocks, min_score=3, limit=8)
         category, skill_type, difficulty, recommended_tags, use_cases = self._recommend_meta(merged_text)
         explicit_use_cases = self._parse_frontmatter_use_cases(frontmatter)
-        inferred_use_cases = self._infer_use_cases("\n".join(filter(None, [merged_text, readme_text or ""])))
+        legacy_inferred_use_cases = self._infer_use_cases(
+            "\n".join(
+                filter(
+                    None,
+                    [
+                        title,
+                        repo.description,
+                        description,
+                        self._first_n_paragraphs(readme_text or "", limit=3),
+                        self._first_n_paragraphs(skill_body or "", limit=3),
+                    ],
+                )
+            )
+        )
+        inferred_use_cases = self._normalize_scene_values(legacy_inferred_use_cases)
         explicit_tags = self._parse_frontmatter_tags(frontmatter)
+        explicit_tools = self._parse_frontmatter_tools(frontmatter)
         inferred_tags = self._extract_tags_from_readmes(repo)
-        prompt_role = self._extract_prompt_role(frontmatter, skill_body, title, skill_type)
-        system_prompt = self._extract_system_prompt(frontmatter, skill_body)
-        matched_scene_use_cases = self._scene_matches_to_use_cases(scene_matches)
-        normalized_use_cases = self._normalize_use_case_candidates(
+        hinted_categories = self._hint_matches(merged_text, CATEGORY_HINTS_BY_SLUG, limit=5)
+        hinted_scenes = self._hint_matches(merged_text, SCENE_HINTS_BY_SLUG, limit=8)
+        hinted_tools = self._normalize_tool_values(
             [
-                *matched_scene_use_cases,
-                *explicit_use_cases,
-                *use_cases,
-                *inferred_use_cases,
+                *self._hint_matches(merged_text, TOOL_HINTS_BY_NAME, limit=8),
+                *self._extract_tool_matches_from_text(merged_text),
             ]
         )
-        if not normalized_use_cases:
-            normalized_use_cases = inferred_use_cases or use_cases or explicit_use_cases
+        rule_skill_type = self._rule_based_skill_type(merged_text, has_skill_md=bool(skill_md_payload))
+        prompt_role = self._extract_prompt_role(frontmatter, skill_body, title, rule_skill_type or skill_type)
+        system_prompt = self._extract_system_prompt(frontmatter, skill_body)
+        matched_scene_use_cases = [item.name for item in scene_matches]
+        normalized_use_cases = self._preferred_scene_values(
+            matched_scene_use_cases,
+            explicit_use_cases,
+            inferred_use_cases or self._normalize_scene_values(use_cases),
+            hinted_scenes,
+        )
         final_use_cases: List[str] = []
         for item in normalized_use_cases:
             if item not in final_use_cases:
                 final_use_cases.append(item)
-        final_category = category_match.code if category_match else category
-        resolved_skill_type = self._runtime_skill_type(
-            skill_type_match.code if skill_type_match else None,
-            skill_type,
+        final_category = self._preferred_category_slug(category_match.code if category_match else category, hinted_categories)
+        resolved_skill_type = (
+            rule_skill_type
+            or self._runtime_skill_type(
+                skill_type_match.code if skill_type_match else None,
+                skill_type,
+            )
+        )
+        final_use_cases = self._prune_generic_scenes(
+            final_use_cases,
+            category=final_category,
+            skill_type=resolved_skill_type,
         )
         final_tags: List[str] = []
         seen_tags = set()
-        matched_tag_names = [item.name for item in tag_matches]
-        for item in explicit_tags + inferred_tags + matched_tag_names + recommended_tags:
+        matched_tag_names = [item.name for item in tag_matches if item.name and item.name.lower() not in GENERIC_FREEFORM_TAGS]
+        for item in explicit_tags + inferred_tags + matched_tag_names + recommended_tags + self._resource_type_tag_names(resolved_skill_type):
             cleaned = str(item or "").strip()[:50]
             lowered = cleaned.lower()
-            if not cleaned or lowered in seen_tags:
+            if not cleaned or lowered in GENERIC_FREEFORM_TAGS or lowered in seen_tags:
                 continue
             seen_tags.add(lowered)
             final_tags.append(cleaned)
@@ -1449,12 +2241,16 @@ class GithubSkillService:
             use_cases=final_use_cases,
             signal_text=self._tag_signal_text("\n".join(repo.readme_texts or ([repo.readme_text] if repo.readme_text else []))),
         )
+        final_models = self._preferred_model_values(
+            [item.code for item in model_matches] + explicit_tools,
+            hinted_tools,
+        )
         matched_taxonomies = {
-            "category": [category_match.code] if category_match else ([category] if category else []),
-            "skill_type": [skill_type_match.code] if skill_type_match else ([skill_type] if skill_type else []),
+            "category": [final_category] if final_category else [],
+            "skill_type": [resolved_skill_type] if resolved_skill_type else [],
             "scene": final_use_cases,
-            "tag": [item.code for item in tag_matches],
-            "model": [item.code for item in model_matches],
+            "tag": final_tags,
+            "model": final_models,
         }
         suggested_taxonomies = self._generate_suggested_taxonomies(
             repo,
@@ -1477,14 +2273,13 @@ class GithubSkillService:
                 else None
             ),
             "skill_type": (
-                {"code": skill_type_match.code, "reason": skill_type_match.reason, "score": skill_type_match.score}
-                if skill_type_match
+                {"code": resolved_skill_type, "reason": skill_type_match.reason, "score": skill_type_match.score}
+                if skill_type_match and resolved_skill_type
                 else None
             ),
             "scene": [
                 {"code": item.code, "reason": item.reason, "score": item.score}
                 for item in scene_matches
-                if self._normalize_use_case_value(item.code) or self._normalize_use_case_value(item.name)
             ],
             "tag": [{"code": item.code, "reason": item.reason, "score": item.score} for item in tag_matches],
             "model": [{"code": item.code, "reason": item.reason, "score": item.score} for item in model_matches],
@@ -1499,7 +2294,7 @@ class GithubSkillService:
             difficulty=difficulty,
             tags=final_tags,
             use_cases=final_use_cases,
-            models=[item.code for item in model_matches],
+            models=final_models,
             prompt_role=prompt_role,
             system_prompt=system_prompt,
             matched_taxonomies=matched_taxonomies,
@@ -1572,6 +2367,8 @@ class GithubSkillService:
             parsed_skill_type=payload.skill_type or parsed.parsed.skill_type,
             parsed_difficulty=payload.difficulty or parsed.parsed.difficulty,
             parsed_tags=payload.tags or parsed.parsed.tags,
+            parsed_use_cases=parsed.parsed.use_cases,
+            parsed_models=parsed.parsed.models,
             parsed_license=parsed.license,
             parsed_original_author=preview.skill_md_frontmatter.get("metadata", {}).get("author") if isinstance(preview.skill_md_frontmatter.get("metadata"), dict) else None,
             raw_repo_json=preview.repo,
@@ -1606,6 +2403,8 @@ class GithubSkillService:
                 parsed_skill_type=item.parsed_skill_type,
                 parsed_difficulty=item.parsed_difficulty,
                 parsed_tags=item.parsed_tags or [],
+                parsed_use_cases=item.parsed_use_cases or [],
+                parsed_models=item.parsed_models or [],
                 parsed_license=item.parsed_license,
                 parsed_original_author=item.parsed_original_author,
                 duplicate_skill_id=str(item.duplicate_skill_id) if item.duplicate_skill_id else None,
@@ -1621,7 +2420,9 @@ class GithubSkillService:
         item = self._get_import(import_id)
         parsed_repo = item.raw_repo_json or {}
         frontmatter = item.raw_skill_md_frontmatter or {}
-        inferred_use_cases = self._parse_frontmatter_use_cases(frontmatter)
+        inferred_use_cases = list(item.parsed_use_cases or [])
+        if not inferred_use_cases:
+            inferred_use_cases = self._parse_frontmatter_use_cases(frontmatter)
         if not inferred_use_cases:
             inference_text = "\n".join(
                 filter(
@@ -1636,6 +2437,11 @@ class GithubSkillService:
                 )
             )
             inferred_use_cases = self._infer_use_cases(inference_text)
+        primary_category_slug = self._select_primary_category_slug(
+            item.parsed_category,
+            list(item.parsed_use_cases or []),
+            list(item.parsed_tags or []),
+        )
         skill = Skill(
             title=item.parsed_title or parsed_repo.get("name") or item.repo_full_name.split("/")[-1],
             slug=self._build_unique_slug(item.parsed_title or item.repo_full_name.split("/")[-1]),
@@ -1644,9 +2450,9 @@ class GithubSkillService:
             cover_icon="agent" if item.parsed_skill_type == "agent" else "prompt",
             difficulty=item.parsed_difficulty or "intermediate",
             type=item.parsed_skill_type or "agent",
-            use_case=item.parsed_category,
+            use_case=(list(item.parsed_use_cases or [])[0] if list(item.parsed_use_cases or []) else primary_category_slug),
             search_keywords=",".join(item.parsed_tags or []),
-            recommended_models=[],
+            recommended_models=list(item.parsed_models or []),
             is_featured=payload.is_featured,
             status="published" if payload.publish else "draft",
             published_at=datetime.now(timezone.utc) if payload.publish else None,
@@ -1658,7 +2464,7 @@ class GithubSkillService:
             is_verified_source=True,
             last_source_synced_at=datetime.now(timezone.utc),
         )
-        category = self._find_category(item.parsed_category)
+        category = self._find_category(primary_category_slug)
         if category is not None:
             skill.category_id = category.id
         self.db.add(skill)
@@ -1666,6 +2472,7 @@ class GithubSkillService:
         if category is not None:
             self.db.add(SkillCategoryRelation(skill_id=skill.id, category_id=category.id, is_primary=True))
         self._ensure_import_tags(skill.id, item.parsed_tags or [], inferred_use_cases)
+        self._ensure_tool_tags(skill.id, list(item.parsed_models or []))
         source = self.db.scalar(select(SkillGithubSource).where(SkillGithubSource.repo_full_name == item.repo_full_name))
         if source is None:
             source = SkillGithubSource(
@@ -1821,10 +2628,12 @@ class GithubSkillService:
                     parsed_summary=parsed.parsed.summary,
                     parsed_description=parsed.parsed.description,
                     parsed_category=row.category or parsed.parsed.category or payload.default_category,
-                    parsed_skill_type=row.skill_type or parsed.parsed.skill_type or payload.default_skill_type,
-                    parsed_difficulty=row.difficulty or parsed.parsed.difficulty or payload.default_difficulty,
-                    parsed_tags=row.tags or parsed.parsed.tags,
-                    parsed_license=parsed.license,
+                parsed_skill_type=row.skill_type or parsed.parsed.skill_type or payload.default_skill_type,
+                parsed_difficulty=row.difficulty or parsed.parsed.difficulty or payload.default_difficulty,
+                parsed_tags=row.tags or parsed.parsed.tags,
+                parsed_use_cases=parsed.parsed.use_cases,
+                parsed_models=parsed.parsed.models,
+                parsed_license=parsed.license,
                     parsed_original_author=preview.skill_md_frontmatter.get("metadata", {}).get("author") if isinstance(preview.skill_md_frontmatter.get("metadata"), dict) else None,
                     raw_repo_json=preview.repo,
                     raw_skill_md_frontmatter=preview.skill_md_frontmatter,
@@ -1904,6 +2713,8 @@ class GithubSkillService:
                 parsed_skill_type=item.parsed_skill_type,
                 parsed_difficulty=item.parsed_difficulty,
                 parsed_tags=item.parsed_tags or [],
+                parsed_use_cases=item.parsed_use_cases or [],
+                parsed_models=item.parsed_models or [],
                 parsed_license=item.parsed_license,
                 parsed_original_author=item.parsed_original_author,
                 duplicate_skill_id=str(item.duplicate_skill_id) if item.duplicate_skill_id else None,
@@ -1980,14 +2791,19 @@ class GithubSkillService:
             if exists is None:
                 self.db.add(SkillTag(skill_id=skill_id, tag_id=tag.id))
 
+    def _ensure_tool_tags(self, skill_id: UUID, names: List[str]) -> None:
+        self._ensure_tags(skill_id, names, "tool")
+
     def _ensure_import_tags(self, skill_id: UUID, names: List[str], use_cases: List[str]) -> None:
         self._ensure_tags(skill_id, names, "type")
-        scene_names = [
-            USE_CASE_LABELS.get(use_case, use_case)
-            for use_case in (use_cases or [])
-            if str(use_case).strip()
-        ]
-        self._ensure_tags(skill_id, scene_names, "scene")
+        self._ensure_tags(skill_id, self._normalize_scene_values(use_cases or []), "scene")
+
+    def _select_primary_category_slug(self, parsed_category: Optional[str], parsed_use_cases: List[str], parsed_tags: List[str]) -> Optional[str]:
+        if parsed_category:
+            return self._canonical_category_slug(parsed_category) or parsed_category
+        signal_text = "\n".join([*(parsed_use_cases or []), *(parsed_tags or [])])
+        hinted = self._hint_matches(signal_text, CATEGORY_HINTS_BY_SLUG, limit=1)
+        return self._preferred_category_slug(None, hinted)
 
     def _admin_uuid(self, admin: dict) -> Optional[UUID]:
         raw = (admin or {}).get("id")

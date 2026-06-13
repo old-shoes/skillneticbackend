@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.response import success
 from app.modules.skill_submissions.schemas import (
     AdminSkillSubmissionQueryIn,
+    DirectSkillSubmissionIn,
     SkillSubmissionApproveIn,
     SkillSubmissionDraftCreateIn,
     SkillSubmissionDraftIn,
@@ -67,6 +68,16 @@ def create_skill_submission_draft(
     db: Session = Depends(get_db),
 ) -> dict:
     data = SkillSubmissionService(db).create_draft(payload, UUID(user_id))
+    return success(data.model_dump())
+
+
+@user_router.post("/skill-submissions/direct-submit")
+def direct_submit_skill_submission(
+    payload: DirectSkillSubmissionIn,
+    user_id: str = Depends(require_user_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    data = SkillSubmissionService(db).direct_submit_submission(payload, UUID(user_id))
     return success(data.model_dump())
 
 

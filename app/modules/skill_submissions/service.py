@@ -29,6 +29,7 @@ from app.modules.skill_submissions.schemas import (
     AdminSkillSubmissionListOut,
     AdminSkillSubmissionQueryIn,
     AdminSkillSubmissionStatsOut,
+    DirectSkillSubmissionIn,
     PaginationOut,
     SkillSubmissionApproveIn,
     SkillSubmissionDraftCreateIn,
@@ -75,13 +76,22 @@ USE_CASE_OPTIONS = [
 ]
 USE_CASE_VALUE_SET = {item["value"] for item in USE_CASE_OPTIONS}
 USE_CASE_LABEL_MAP = {item["label"]: item["value"] for item in USE_CASE_OPTIONS}
+DEFAULT_RUNTIME_OPTIONS = [
+    {"label": "Claude Code", "value": "Claude Code"},
+    {"label": "Codex", "value": "Codex"},
+    {"label": "OpenClaw", "value": "OpenClaw"},
+    {"label": "Cursor", "value": "Cursor"},
+    {"label": "Gemini CLI", "value": "Gemini CLI"},
+    {"label": "Claude", "value": "Claude"},
+    {"label": "OpenAI", "value": "OpenAI"},
+]
 SUBMISSION_COVER_SET = set(SUBMISSION_COVER_OPTIONS)
 SKILL_TYPE_OPTIONS = [
-    {"label": "提示词", "value": "prompt"},
-    {"label": "工作流", "value": "workflow"},
-    {"label": "教程", "value": "tutorial"},
-    {"label": "工具配置", "value": "tool_config"},
-    {"label": "Agent", "value": "agent"},
+    {"label": "Prompt", "value": "prompt"},
+    {"label": "Workflow", "value": "workflow"},
+    {"label": "开发者框架", "value": "tutorial"},
+    {"label": "Skill", "value": "tool_config"},
+    {"label": "Agent 运行平台", "value": "agent"},
 ]
 SKILL_TYPE_VALUE_SET = {item["value"] for item in SKILL_TYPE_OPTIONS}
 
@@ -158,6 +168,29 @@ class SkillSubmissionService:
             categories.append(category)
         return categories
 
+    def _ensure_dynamic_tag(self, name: str, tag_type: str, *, slug: Optional[str] = None) -> Tag:
+        cleaned_name = (name or "").strip()
+        if not cleaned_name:
+            raise HTTPException(status_code=400, detail=f"invalid {tag_type} value")
+        normalized_slug = (slug or self._slugify(cleaned_name)).strip()[:80] or cleaned_name[:80]
+        tag = self.db.scalar(
+            select(Tag).where(
+                Tag.type == tag_type,
+                Tag.deleted_at.is_(None),
+                or_(Tag.slug == normalized_slug, Tag.name == cleaned_name),
+            )
+        )
+        if tag is None:
+            tag = Tag(
+                name=cleaned_name[:50],
+                slug=normalized_slug,
+                type=tag_type,
+                is_enabled=True,
+            )
+            self.db.add(tag)
+            self.db.flush()
+        return tag
+
     def _category_out(self, category: Category) -> SubmissionCategoryOut:
         return SubmissionCategoryOut(
             id=str(category.id),
@@ -232,13 +265,16 @@ class SkillSubmissionService:
             return []
         normalized: List[str] = []
         seen = set()
+        scene_label_map = self._scene_label_map()
+        scene_value_set = self._scene_value_set()
         for raw in values:
             item = (raw or "").strip()
             if not item:
                 continue
-            value = USE_CASE_LABEL_MAP.get(item, item)
-            if value not in USE_CASE_VALUE_SET:
-                raise HTTPException(status_code=400, detail=f"invalid useCases value: {item}")
+            value = scene_label_map.get(item) or USE_CASE_LABEL_MAP.get(item) or item
+            if value not in scene_value_set:
+                self._ensure_dynamic_tag(item, "scene", slug=value)
+                scene_value_set.add(value)
             if value in seen:
                 continue
             seen.add(value)
@@ -253,8 +289,67 @@ class SkillSubmissionService:
             raise HTTPException(status_code=400, detail="invalid coverImage value")
         return normalized
 
+    def _scene_options(self) -> List[dict]:
+        count_rows = self.db.execute(
+            select(Tag.slug, func.count(func.distinct(SkillTag.skill_id)))
+            .select_from(Tag)
+            .join(SkillTag, SkillTag.tag_id == Tag.id, isouter=True)
+            .join(Skill, Skill.id == SkillTag.skill_id, isouter=True)
+            .where(
+                Tag.type == "scene",
+                Tag.deleted_at.is_(None),
+                Tag.is_enabled.is_(True),
+                Skill.status == "published",
+                Skill.deleted_at.is_(None),
+            )
+            .group_by(Tag.slug)
+        ).all()
+        count_map = {slug: int(total or 0) for slug, total in count_rows}
+
+        rows = self.db.scalars(
+            select(Tag)
+            .where(
+                Tag.type == "scene",
+                Tag.deleted_at.is_(None),
+                Tag.is_enabled.is_(True),
+            )
+            .order_by(Tag.sort_order.asc(), Tag.created_at.asc())
+        ).all()
+
+        filtered = [item for item in rows if count_map.get(item.slug, 0) > 0]
+        source_rows = filtered or rows
+        if not source_rows:
+            return USE_CASE_OPTIONS
+        return [{"label": item.name, "value": item.slug} for item in source_rows]
+
+    def _scene_value_set(self) -> set[str]:
+        return {item["value"] for item in self._scene_options()} | USE_CASE_VALUE_SET
+
+    def _scene_label_map(self) -> dict[str, str]:
+        label_map = {item["label"]: item["value"] for item in USE_CASE_OPTIONS}
+        for item in self._scene_options():
+            label_map[item["label"]] = item["value"]
+        return label_map
+
+    def _scene_value_to_label_map(self) -> dict[str, str]:
+        value_to_label = {item["value"]: item["label"] for item in USE_CASE_OPTIONS}
+        for item in self._scene_options():
+            value_to_label[item["value"]] = item["label"]
+        return value_to_label
+
     def _model_options(self) -> List[dict]:
-        return []
+        rows = self.db.scalars(
+            select(Tag)
+            .where(
+                Tag.type == "tool",
+                Tag.deleted_at.is_(None),
+                Tag.is_enabled.is_(True),
+            )
+            .order_by(Tag.skill_count.desc(), Tag.sort_order.asc(), Tag.created_at.asc())
+        ).all()
+        if not rows:
+            return DEFAULT_RUNTIME_OPTIONS
+        return [{"label": item.name, "value": item.name} for item in rows]
 
     def _normalize_skill_type(self, value: Optional[str]) -> Optional[str]:
         normalized = (value or "").strip()
@@ -275,7 +370,8 @@ class SkillSubmissionService:
             if not item or item in seen:
                 continue
             if item not in valid_values:
-                raise HTTPException(status_code=400, detail=f"invalid recommendedModels value: {item}")
+                self._ensure_dynamic_tag(item, "tool")
+                valid_values.add(item)
             seen.add(item)
             normalized.append(item)
         return normalized
@@ -296,8 +392,8 @@ class SkillSubmissionService:
                 "文案校对大师",
                 "自定义角色",
             ],
-            useCaseOptions=USE_CASE_OPTIONS,
-            modelOptions=[],
+            useCaseOptions=self._scene_options(),
+            modelOptions=self._model_options(),
             skillTypeOptions=SKILL_TYPE_OPTIONS,
             outputFormats=[
                 {"label": "标题", "value": "title"},
@@ -315,11 +411,12 @@ class SkillSubmissionService:
                 {"label": "标题", "value": "title"},
                 {"label": "简介", "value": "summary"},
                 {"label": "详细介绍", "value": "description"},
-                {"label": "分类", "value": "categoryId"},
-                {"label": "标签", "value": "tags"},
-                {"label": "Skill 类型", "value": "skillType"},
+                {"label": "领域分类", "value": "categoryId"},
+                {"label": "补充标签", "value": "tags"},
+                {"label": "资源类型", "value": "skillType"},
+                {"label": "适用工具", "value": "recommendedModels"},
                 {"label": "预计使用时长", "value": "estimatedTime"},
-                {"label": "适用场景", "value": "useCases"},
+                {"label": "使用场景", "value": "useCases"},
                 {"label": "封面", "value": "coverImage"},
                 {"label": "Prompt 角色", "value": "promptRole"},
                 {"label": "Prompt 模板", "value": "systemPrompt"},
@@ -413,13 +510,21 @@ class SkillSubmissionService:
     def _sync_submission_skill_tags(self, submission: SkillSubmission, skill: Skill) -> None:
         self.db.execute(delete(SkillTag).where(SkillTag.skill_id == skill.id))
         attached_tag_ids: set[UUID] = set()
-        attached_tag_ids = self._ensure_skill_tags(skill.id, list(submission.tags or []), "type", attached_tag_ids)
+        type_label = next(
+            (item["label"] for item in SKILL_TYPE_OPTIONS if item["value"] == (submission.skill_type or "").strip()),
+            (submission.skill_type or "").strip(),
+        )
+        if type_label:
+            attached_tag_ids = self._ensure_skill_tags(skill.id, [type_label], "type", attached_tag_ids)
+        scene_value_to_label = self._scene_value_to_label_map()
         scene_names = [
-            next((item["label"] for item in USE_CASE_OPTIONS if item["value"] == use_case), use_case)
+            scene_value_to_label.get(use_case, use_case)
             for use_case in (submission.use_cases or [])
             if str(use_case).strip()
         ]
-        self._ensure_skill_tags(skill.id, scene_names, "scene", attached_tag_ids)
+        attached_tag_ids = self._ensure_skill_tags(skill.id, scene_names, "scene", attached_tag_ids)
+        tool_names = [str(item).strip() for item in (submission.recommended_models or []) if str(item).strip()]
+        self._ensure_skill_tags(skill.id, tool_names, "tool", attached_tag_ids)
 
     def _submission_to_category(self, submission: SkillSubmission) -> Optional[SubmissionCategoryOut]:
         if not submission.category_id or not submission.category_name:
@@ -644,23 +749,20 @@ class SkillSubmissionService:
         elif (not is_github_submission and len(summary) < 10) or len(summary) > (160 if is_github_submission else 80):
             required_errors.append("summary")
 
-        if description and (
-            len(description) < 20
-            or (not is_github_submission and len(description) > 500)
-        ):
-            required_errors.append("description")
-
-        if not submission.category_id:
+        if is_github_submission and not submission.category_id:
             required_errors.append("categoryId")
 
-        if len(tags) < 1 or len(tags) > 8:
+        if len(tags) > 8:
             required_errors.append("tags")
 
         if skill_type not in SKILL_TYPE_VALUE_SET:
             required_errors.append("skillType")
 
-        if len(use_cases) < 1:
+        if is_github_submission and len(use_cases) < 1:
             required_errors.append("useCases")
+
+        if is_github_submission and len([str(item).strip() for item in (submission.recommended_models or []) if str(item).strip()]) < 1:
+            required_errors.append("recommendedModels")
 
         if not is_github_submission:
             if not system_prompt:
@@ -777,6 +879,76 @@ class SkillSubmissionService:
         self.db.add(submission)
         self.db.flush()
         self._write_log(submission, "submit", "user", self._get_submitter_out(submitter_id).nickname, None, "draft", comment="创建草稿")
+        self.db.commit()
+        self.db.refresh(submission)
+        return self._draft_out(submission)
+
+    def direct_submit_submission(self, payload: DirectSkillSubmissionIn, submitter_id: UUID) -> SkillSubmissionDraftOut:
+        categories = self._normalize_category_ids(payload.categoryIds, payload.categoryId)
+        primary_category = categories[0] if categories else None
+
+        submission = SkillSubmission(
+            submitter_id=submitter_id,
+            submission_type="manual",
+            source_type="user",
+            title=(payload.title or "").strip(),
+            slug=(payload.slug or "").strip() or self._slugify((payload.title or "").strip()),
+            summary=(payload.summary or "").strip(),
+            description=payload.description or "",
+            category_id=primary_category.id if primary_category else None,
+            category_ids=[str(item.id) for item in categories],
+            category_name=primary_category.name if primary_category else None,
+            tags=[item.strip() for item in (payload.tags or []) if item and item.strip()],
+            skill_type=self._normalize_skill_type(payload.skillType) or "prompt",
+            recommended_models=self._normalize_recommended_models(payload.recommendedModels),
+            difficulty=payload.difficulty or "beginner",
+            estimated_time=(payload.estimatedTime or "").strip(),
+            cover_image=self._normalize_cover_image(payload.coverImage),
+            use_cases=self._normalize_use_cases(payload.useCases),
+            prompt_role=(payload.promptRole or "").strip(),
+            prompt_file_name=(payload.promptFileName or "").strip() or None,
+            system_prompt=payload.systemPrompt or "",
+            output_formats=list(payload.outputFormats or []),
+            creativity=payload.creativity if payload.creativity is not None else 0.7,
+            precision=payload.precision if payload.precision is not None else 0.6,
+            output_language=(payload.outputLanguage or "zh-CN").strip(),
+            output_length=(payload.outputLength or "").strip(),
+            example_inputs=[item.model_dump() for item in (payload.exampleInputs or [])],
+            example_output=payload.exampleOutput.model_dump() if payload.exampleOutput is not None else {},
+            usage_guide=payload.usageGuide or "",
+            attachment_urls=[item.strip() for item in (payload.attachmentUrls or []) if item and item.strip()],
+            faqs=[item.model_dump() for item in (payload.faqs or []) if item.question.strip() or item.answer.strip()],
+            submit_note=(payload.submitNote or "").strip() or None,
+            status="draft",
+        )
+        self.db.add(submission)
+        self.db.flush()
+
+        if payload.promptVariables is not None:
+            self._replace_variables(submission.id, payload.promptVariables)
+
+        self._validate_for_submit(submission)
+        submission.status = "pending_review"
+        submission.submitted_at = datetime.now(timezone.utc)
+        self._ensure_review_checks(submission)
+        self._write_log(
+            submission,
+            "submit",
+            "user",
+            self._get_submitter_out(submitter_id).nickname,
+            None,
+            "pending_review",
+            comment=submission.submit_note,
+        )
+        if self._get_submitter_user(submission.submitter_id) is not None:
+            NotificationService(self.db).create_notification(
+                user_id=submission.submitter_id,
+                type="skill_pending_review",
+                title=f"你的 Skill「{submission.title}」已提交审核",
+                content="我们会尽快完成审核，并在状态变化后通知你。",
+                related_type="skill_submission",
+                related_id=submission.id,
+            )
         self.db.commit()
         self.db.refresh(submission)
         return self._draft_out(submission)
@@ -987,6 +1159,7 @@ class SkillSubmissionService:
         original_author = metadata.get("author") if isinstance(metadata, dict) else None
         cleaned_tags = [item.strip() for item in payload.tags if item.strip()]
         normalized_use_cases = self._normalize_use_cases(payload.use_cases or parsed.parsed.use_cases or [])
+        normalized_recommended_models = self._normalize_recommended_models(payload.recommended_models or [])
         summary = payload.summary.strip()
 
         submission = SkillSubmission(
@@ -1007,7 +1180,7 @@ class SkillSubmissionService:
             category_name=category.name if category else None,
             tags=cleaned_tags or list(parsed.parsed.tags or []),
             skill_type=payload.skill_type or parsed.parsed.skill_type or "agent",
-            recommended_models=[],
+            recommended_models=normalized_recommended_models,
             difficulty=payload.difficulty or parsed.parsed.difficulty or "intermediate",
             estimated_time="",
             cover_image=(payload.cover_url or "").strip() or None,

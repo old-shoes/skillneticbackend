@@ -84,6 +84,8 @@ class GithubSkillImportListItemOut(BaseModel):
     parsed_skill_type: Optional[str] = None
     parsed_difficulty: Optional[str] = None
     parsed_tags: List[str] = Field(default_factory=list)
+    parsed_use_cases: List[str] = Field(default_factory=list)
+    parsed_models: List[str] = Field(default_factory=list)
     parsed_license: Optional[str] = None
     parsed_original_author: Optional[str] = None
     duplicate_skill_id: Optional[str] = None
